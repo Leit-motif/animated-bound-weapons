@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+**/build/
+**/build-*/
+.vs/
+*.user
+*.suo
+*.pdb
+AnimatedBoundWeapons/*.esp
+AnimatedBoundWeapons/SKSE/
+docs/
