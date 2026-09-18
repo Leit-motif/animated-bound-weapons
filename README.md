@@ -48,8 +48,9 @@ cmake --build tools/AnimatedBoundWeaponsSKSE/tests/build --config Release
 ctest --test-dir tools/AnimatedBoundWeaponsSKSE/tests/build -C Release --output-on-failure
 ```
 
-Static checks do not replace in-game testing. This repository is provided for source inspection and code review. No additional reuse license is granted by this README; dependency licenses remain applicable.
+Static checks do not replace in-game testing. The original project code is licensed under GPL-3.0; see LICENSE. Third-party components retain their own licenses; see THIRD-PARTY-NOTICES.txt. Corresponding source: https://github.com/Leit-motif/animated-bound-weapons.
 
 ## Credits
 
 Built with SKSE, CommonLibSSE-NG, SKSE Menu Framework, and Mutagen.
+
