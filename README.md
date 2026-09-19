@@ -1,6 +1,8 @@
 # Animated Bound Weapons
 
-A Skyrim SKSE plugin that turns supported Bound weapon spells into a floating weapon companion. Animate a sword, dagger, battleaxe, bow, or paired one-handed loadout, or switch back to wielding the weapons yourself.
+A Skyrim SKSE plugin that lets you animate a Bound weapon instead of holding it. Cast a Bound sword, dagger, battleaxe, or bow and it goes on fighting under your command with your load order's combat animations. Any Bound weapon spell qualifies, vanilla or mod-added. Switch back to wielding it yourself with a shout.
+
+Nexus page: https://www.nexusmods.com/skyrimspecialedition/mods/192288
 
 ## Requirements
 
@@ -13,15 +15,15 @@ Runtime testing was performed on SE 1.5.97. The plugin targets SE and AE; AE has
 
 ## Usage
 
-Install the ESP, SKSE DLL and distribution INI through a mod manager, enable the ESP, and launch Skyrim through SKSE. Learn a supported Bound weapon spell and cast it to animate a companion.
+Install the ESP, SKSE DLL and distribution INI through a mod manager, enable the ESP, and launch Skyrim through SKSE. Learn a supported Bound weapon spell and cast it; the weapon animates.
 
-In the default **On-cast** mode, the **Animated Bound Weapons** lesser power switches subsequent casts between **Animate** and **Wield**. Animating a new companion replaces the existing one.
+In the default **On-cast** mode, the **Animated Bound Weapons** lesser power switches subsequent casts between **Animate** and **Wield**. Animating a new weapon replaces the one already out.
 
 Open **SKSE Menu Framework → Animated Bound Weapons → Assignment** to configure **Cycle** or **Random** tables. Each row contains a Right spell and an optional Left one-handed spell. In these modes, use the lesser power to animate a table entry. Loadouts persist in the character's SKSE co-save; keep the matching `.skse` and `.ess` files together.
 
-**Dual Cast Wield**, enabled by default, makes dual casting a supported one-handed Bound spell create a matching pair for the companion or player. One companion is active at a time. Table loadouts charge the combined spell cost and use the shorter duration.
+**Dual Cast Wield**, enabled by default, makes dual casting a supported one-handed Bound spell conjure a matching pair, animated or in the player's own hands. One animated weapon is active at a time. Table loadouts charge the combined spell cost and use the shorter duration.
 
-Eligible mod-added Bound weapon spells are supported. Crossbows, ritual spells and creature-summoning spells are excluded. No Papyrus scripts are packaged.
+Any one-handed, two-handed, or bow Bound weapon spell is supported, including mod-added ones; the plugin reads the Bound archetype off the spell. Crossbows, ritual spells and creature-summoning spells are excluded. No Papyrus scripts are packaged.
 
 ## Build
 
@@ -53,4 +55,6 @@ Static checks do not replace in-game testing. The original project code is licen
 ## Credits
 
 Built with SKSE, CommonLibSSE-NG, SKSE Menu Framework, and Mutagen.
+
+Inspired by SeaSparrow's [Animate Bound Weapons](https://www.nexusmods.com/skyrimspecialedition/mods/135555). This is a separate mod, rewritten from scratch; neither requires the other.
 
