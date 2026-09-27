@@ -1,6 +1,9 @@
 #include "PCH.h"
 
 #include "Activate.h"
+#include "Balance.h"
+#include "BoundFacts.h"
+#include "FloaterSetup.h"
 #include "FormListStorage.h"
 #include "Forms.h"
 #include "Loadout.h"
@@ -9,6 +12,9 @@
 #include "PlayerSpells.h"
 #include "PowerGrant.h"
 #include "SpellFilters.h"
+#include "Strings.h"
+
+#include <atomic>
 
 namespace abw
 {
@@ -17,39 +23,66 @@ namespace abw
 		int gSelectedKnown{ 0 };
 		int gSelectedAssigned{ 0 };
 		int gPickerModeUi{ 2 };  // 0=Cycle, 1=Random, 2=On-cast — mirrored from ABW_PickerMode
+		int gFloaterCapUi{ kFloaterCapDefault };
 		bool gOpenedOnce{ false };
+		std::atomic<std::uint64_t> gPendingFloaterCapRequest{ 0 };
+
+		// The slider runs on the menu thread; the global write and any trim of the oldest
+		// floaters run as one game-thread task. Only the latest request survives a drag.
+		void QueueFloaterCapReconcile(const int cap)
+		{
+			if (auto* tasks = SKSE::GetTaskInterface()) {
+				const auto request = (CurrentFloaterSession() << 4) |
+				                     static_cast<std::uint64_t>(cap);
+				gPendingFloaterCapRequest.store(request);
+				tasks->AddTask([] {
+					const auto request = gPendingFloaterCapRequest.exchange(0);
+					const auto wanted = static_cast<int>(request & 0xF);
+					if (request == 0 || (request >> 4) != CurrentFloaterSession() ||
+					    wanted < kFloaterCapMin || wanted > kFloaterCapMax) {
+						return;
+					}
+					auto& forms = GetForms();
+					WriteFloaterCapGlobal(forms.floaterCap, static_cast<float>(wanted));
+					ReconcileFloaterCap(0);
+					SKSE::log::info(
+					    "FloaterCap set to {} (reconciled)",
+					    ReadFloaterCapGlobal(forms.floaterCap));
+				});
+			}
+		}
 
 		const char* SpellComboGetter(void* data, int idx)
 		{
 			const auto* spells = static_cast<const std::vector<RE::SpellItem*>*>(data);
 			if (!spells || idx < 0 || static_cast<std::size_t>(idx) >= spells->size()) {
-				return "(none)";
+				return T(Str::SpellNone);
 			}
 			const auto* spell = (*spells)[static_cast<std::size_t>(idx)];
-			return spell && spell->GetFullName() ? spell->GetFullName() : "(unnamed)";
+			return spell && spell->GetFullName() ? spell->GetFullName() : T(Str::SpellUnnamed);
 		}
 
 		const char* LeftComboGetter(void* data, int idx)
 		{
 			const auto* spells = static_cast<const std::vector<RE::SpellItem*>*>(data);
 			if (!spells || idx <= 0 || static_cast<std::size_t>(idx) >= spells->size()) {
-				return "None";
+				return T(Str::LeftNone);
 			}
 			const auto* spell = (*spells)[static_cast<std::size_t>(idx)];
-			return spell && spell->GetFullName() ? spell->GetFullName() : "(unnamed)";
+			return spell && spell->GetFullName() ? spell->GetFullName() : T(Str::SpellUnnamed);
 		}
 
 		const char* PickerModeGetter(void*, int idx)
 		{
 			switch (idx) {
 			case 0:
-				return "Cycle";
+				return T(Str::PickCycle);
 			case 1:
-				return "Random";
+				return T(Str::PickRandom);
 			case 2:
-				return "On-cast";
+				return T(Str::PickOnCast);
 			default:
-				return "(none)";
+				return T(Str::SpellNone);
 			}
 		}
 
@@ -139,6 +172,60 @@ namespace abw
 			}
 		}
 
+		// Ticket 11 sliders and the ticket 09 quiver toggle. Values snap to 0.05 on write
+		// so the GLOB reads as the slider shows it; the preview names the known spell
+		// the combo below has selected, so "0.50" means a number of seconds.
+		void RenderBalance(Forms& forms)
+		{
+			ImGuiMCP::SeparatorText(T(Str::Balance));
+			float duration = ReadScale(forms.durationScale);
+			ImGuiMCP::SetNextItemWidth(220.0f);
+			if (ImGuiMCP::SliderFloat(
+			        T(Str::DurationScale), &duration, kScaleMin, kScaleMax, "%.2f")) {
+				WriteScale(forms.durationScale, duration);
+				SKSE::log::info("DurationScale set to {:.2f}", ReadScale(forms.durationScale));
+			}
+			const auto& known = GetPlayerSpellCache().GetBoundSpells();
+			if (gPickerModeUi != 2 && gSelectedKnown >= 0 &&
+			    static_cast<std::size_t>(gSelectedKnown) < known.size()) {
+				auto* spell = known[static_cast<std::size_t>(gSelectedKnown)];
+				if (spell) {
+					ImGuiMCP::SameLine();
+					ImGuiMCP::Text(
+					    T(Str::DurationPreview),
+					    spell->GetFullName() ? spell->GetFullName() : T(Str::SpellUnnamed),
+					    static_cast<double>(
+					        ResolveBoundFacts(spell).duration * ReadScale(forms.durationScale)));
+				}
+			}
+			float damage = ReadScale(forms.damageScale);
+			ImGuiMCP::SetNextItemWidth(220.0f);
+			if (ImGuiMCP::SliderFloat(
+			        T(Str::DamageScale), &damage, kScaleMin, kScaleMax, "%.2f")) {
+				WriteScale(forms.damageScale, damage);
+				SKSE::log::info("DamageScale set to {:.2f}", ReadScale(forms.damageScale));
+			}
+
+			bool hideQuiver = ReadHideQuiver(forms.hideQuiver);
+			if (ImGuiMCP::Checkbox(T(Str::HideQuiver), &hideQuiver)) {
+				WriteHideQuiver(forms.hideQuiver, hideQuiver);
+				SKSE::log::info("HideQuiver set to {}", hideQuiver ? "on" : "off");
+			}
+
+			// Without CLF the engine's summon limit decides; there is nothing to set.
+			if (ClfPresent()) {
+				gFloaterCapUi = ReadFloaterCapGlobal(forms.floaterCap, false);
+				ImGuiMCP::SetNextItemWidth(220.0f);
+				if (ImGuiMCP::SliderInt(
+				        T(Str::FloaterCap),
+				        &gFloaterCapUi,
+				        kFloaterCapMin,
+				        kFloaterCapMax)) {
+					QueueFloaterCapReconcile(gFloaterCapUi);
+				}
+			}
+		}
+
 		void __stdcall RenderSection()
 		{
 			if (!gOpenedOnce) {
@@ -149,26 +236,13 @@ namespace abw
 			EnsureFormsAndSpells();
 			auto& forms = GetForms();
 			if (!forms.assignedSpells) {
-				ImGuiMCP::TextWrapped("Forms unavailable — ensure AnimatedBoundWeapons.esp is loaded.");
+				ImGuiMCP::TextWrapped("%s", T(Str::FormsUnavailable));
 				return;
-			}
-
-			ImGuiMCP::TextWrapped(
-			    "On-cast is the default: Bound you cast becomes a floater, or stays on you "
-			    "after you shout the Voice lesser power. That power is granted on load when "
-			    "you know a Bound weapon — shout toggles floater vs self in On-cast, or "
-			    "spawns from the table in Cycle/Random. Rows are Right + optional Left. "
-			    "Duplicate Right entries are allowed. Cost = Right plus Left magicka; "
-			    "floater lasts the shorter Bound duration.");
-			{
-				const auto preview = GetLoadouts(
-				    forms.assignedSpells, forms.assignedLeftSpells, forms.leftNone);
-				ImGuiMCP::Text("Table size: %d", static_cast<int>(preview.size()));
 			}
 
 			SyncPickerModeFromGlobal(forms.pickerMode);
 			ImGuiMCP::SetNextItemWidth(220.0f);
-			if (ImGuiMCP::Combo("Pick mode", &gPickerModeUi, PickerModeGetter, nullptr, 3)) {
+			if (ImGuiMCP::Combo(T(Str::PickMode), &gPickerModeUi, PickerModeGetter, nullptr, 3)) {
 				WritePickerModeToGlobal(forms.pickerMode, gPickerModeUi);
 				if (auto* player = RE::PlayerCharacter::GetSingleton()) {
 					SyncAbwPowerForPickerMode(
@@ -182,43 +256,48 @@ namespace abw
 
 			if (gPickerModeUi == 2) {
 				ImGuiMCP::Text(
-				    "%s  (shout to switch)",
-				    ReadOnCastArmed(forms.onCastArmed) ? "Bound Weapons Mode: Animate" :
-				                                        "Bound Weapons Mode: Wield");
+				    T(Str::ShoutToSwitch),
+				    ReadOnCastArmed(forms.onCastArmed) ? T(Str::ModeAnimate) : T(Str::ModeWield));
 			}
 
 			bool dualCastWield = ReadDualCastWield(forms.dualCastWield);
-			if (ImGuiMCP::Checkbox("Dual Cast Wield", &dualCastWield)) {
+			if (ImGuiMCP::Checkbox(T(Str::DualCastWield), &dualCastWield)) {
 				WriteDualCastWield(forms.dualCastWield, dualCastWield);
 				SKSE::log::info(
 				    "DualCastWield set to {}", dualCastWield ? "on" : "off");
 			}
-			ImGuiMCP::TextWrapped(
-			    "Dual Casting a one-handed Bound puts that weapon in both hands. "
-			    "Animate still sends it to a floater; Wield and Cycle/Random keep it on you.");
 
-			if (ImGuiMCP::Button("Refresh Spells")) {
-				if (auto* player = RE::PlayerCharacter::GetSingleton()) {
-					GetPlayerSpellCache().Refresh(player);
+			if (gPickerModeUi != 2) {
+				if (ImGuiMCP::Button(T(Str::RefreshSpells))) {
+					if (auto* player = RE::PlayerCharacter::GetSingleton()) {
+						GetPlayerSpellCache().Refresh(player);
+					}
 				}
+				ImGuiMCP::SameLine();
 			}
-			ImGuiMCP::SameLine();
-			if (ImGuiMCP::Button("Grant Power")) {
+			if (ImGuiMCP::Button(T(Str::GrantPower))) {
 				if (auto* player = RE::PlayerCharacter::GetSingleton()) {
 					GrantAbwPower(player, forms.abwPower, forms.powerOptOut);
 				}
 			}
 			ImGuiMCP::SameLine();
-			if (ImGuiMCP::Button("Remove Power")) {
+			if (ImGuiMCP::Button(T(Str::RemovePower))) {
 				if (auto* player = RE::PlayerCharacter::GetSingleton()) {
 					RemoveAbwPower(player, forms.abwPower, forms.powerOptOut);
 				}
 			}
 
-			ImGuiMCP::SeparatorText("Known Bound spells");
+			RenderBalance(forms);
+
+			// On cast summons whatever Bound spell is cast; the picker and list have no use.
+			if (gPickerModeUi == 2) {
+				return;
+			}
+
+			ImGuiMCP::SeparatorText(T(Str::KnownSpells));
 			const auto& known = GetPlayerSpellCache().GetBoundSpells();
 			if (known.empty()) {
-				ImGuiMCP::TextWrapped("No Self FireAndForget Bound spells in your spellbook.");
+				ImGuiMCP::TextWrapped("%s", T(Str::NoKnownSpells));
 			} else {
 				if (gSelectedKnown >= static_cast<int>(known.size())) {
 					gSelectedKnown = static_cast<int>(known.size()) - 1;
@@ -226,7 +305,7 @@ namespace abw
 				ImGuiMCP::Combo("##known", &gSelectedKnown, SpellComboGetter,
 					const_cast<std::vector<RE::SpellItem*>*>(&known),
 					static_cast<int>(known.size()));
-				if (ImGuiMCP::Button("Add to table")) {
+				if (ImGuiMCP::Button(T(Str::AddToTable))) {
 					if (gSelectedKnown >= 0 && static_cast<std::size_t>(gSelectedKnown) < known.size()) {
 						auto* spell = known[static_cast<std::size_t>(gSelectedKnown)];
 						if (!IsBoundAssignable(spell)) {
@@ -243,17 +322,12 @@ namespace abw
 				}
 			}
 
-			const char* tableLabel = gPickerModeUi == 2
-			                             ? "Assignment table (unused in On-cast spawn)"
-			                             : (gPickerModeUi == 0
-			                                    ? "Assignment table (entry 0 = next cycle pick)"
-			                                    : "Assignment table (random pick among entries)");
-			ImGuiMCP::SeparatorText(tableLabel);
+			ImGuiMCP::SeparatorText(T(Str::SummonList));
 			auto assigned = GetLoadouts(
 			    forms.assignedSpells, forms.assignedLeftSpells, forms.leftNone);
 			auto leftChoices = LeftHandChoices(known);
 			if (assigned.empty()) {
-				ImGuiMCP::TextWrapped("(empty — power will notify and charge nothing)");
+				ImGuiMCP::TextWrapped("%s", T(Str::TableEmpty));
 			} else {
 				if (gSelectedAssigned >= static_cast<int>(assigned.size())) {
 					gSelectedAssigned = static_cast<int>(assigned.size()) - 1;
@@ -263,17 +337,17 @@ namespace abw
 				        2,
 				        ImGuiMCP::ImGuiTableFlags_SizingStretchProp |
 				            ImGuiMCP::ImGuiTableFlags_BordersInnerV)) {
-					ImGuiMCP::TableSetupColumn("Right");
-					ImGuiMCP::TableSetupColumn("Left Hand");
+					ImGuiMCP::TableSetupColumn(T(Str::ColumnRight));
+					ImGuiMCP::TableSetupColumn(T(Str::ColumnLeft));
 					ImGuiMCP::TableHeadersRow();
 					for (std::size_t i = 0; i < assigned.size(); ++i) {
 						ImGuiMCP::PushID(static_cast<int>(i));
 						const auto& row = assigned[i];
 						const char* name =
 						    row.right && row.right->GetFullName() ? row.right->GetFullName()
-						                                         : "(unnamed)";
+						                                         : T(Str::SpellUnnamed);
 						const bool selected = static_cast<int>(i) == gSelectedAssigned;
-						const char* mark = (gPickerModeUi == 0 && i == 0) ? "  [next]" : "";
+						const char* mark = (gPickerModeUi == 0 && i == 0) ? T(Str::NextMark) : "";
 						ImGuiMCP::TableNextRow();
 						ImGuiMCP::TableNextColumn();
 						if (ImGuiMCP::Selectable(
@@ -310,7 +384,7 @@ namespace abw
 					ImGuiMCP::EndTable();
 				}
 
-				if (ImGuiMCP::Button("Move Up") && gSelectedAssigned > 0) {
+				if (ImGuiMCP::Button(T(Str::MoveUp)) && gSelectedAssigned > 0) {
 					const auto from = static_cast<std::size_t>(gSelectedAssigned);
 					if (MoveLoadout(
 					        forms.assignedSpells,
@@ -322,7 +396,7 @@ namespace abw
 					}
 				}
 				ImGuiMCP::SameLine();
-				if (ImGuiMCP::Button("Move Down") &&
+				if (ImGuiMCP::Button(T(Str::MoveDown)) &&
 				    gSelectedAssigned >= 0 &&
 				    static_cast<std::size_t>(gSelectedAssigned) + 1 < assigned.size()) {
 					const auto from = static_cast<std::size_t>(gSelectedAssigned);
@@ -336,7 +410,7 @@ namespace abw
 					}
 				}
 				ImGuiMCP::SameLine();
-				if (ImGuiMCP::Button("Remove") && gSelectedAssigned >= 0) {
+				if (ImGuiMCP::Button(T(Str::RemoveRow)) && gSelectedAssigned >= 0) {
 					if (RemoveLoadoutAt(
 					        forms.assignedSpells,
 					        forms.assignedLeftSpells,
@@ -352,11 +426,11 @@ namespace abw
 					}
 				}
 				ImGuiMCP::SameLine();
-				if (ImGuiMCP::Button("Clear All")) {
+				if (ImGuiMCP::Button(T(Str::ClearAll))) {
 					ClearLoadouts(
 					    forms.assignedSpells, forms.assignedLeftSpells, forms.leftNone);
 					gSelectedAssigned = 0;
-					RE::DebugNotification("Animated Bound Weapons: assignments cleared");
+					RE::SendHUDMessage::ShowHUDMessage(T(Str::NotifyCleared));
 				}
 			}
 		}
@@ -370,7 +444,7 @@ namespace abw
 		}
 
 		SKSEMenuFramework::SetSection(MOD_NAME);
-		SKSEMenuFramework::AddSectionItem("Assignment", RenderSection);
+		SKSEMenuFramework::AddSectionItem(T(Str::SectionAssignment), RenderSection);
 		SKSE::log::info("Registered SKSE Menu section '{}'", MOD_NAME);
 	}
 }

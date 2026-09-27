@@ -2,7 +2,11 @@ using Xunit;
 
 namespace AnimatedBoundWeapons.VerifyEsp.Tests;
 
-/// <summary>Static source checks; these do not establish in-game behavior.</summary>
+/// <summary>
+/// Dual-wield loadouts — static seam pins from
+/// <c>.scratch/abw-dual-wield-loadouts/spec.md</c>. Live gates are
+/// <c>docs/test-results.md</c>, not this class.
+/// </summary>
 public sealed class SkseDualWieldTests
 {
     static string RepoRoot => GoodEsp.FindRepoRoot();
@@ -75,15 +79,13 @@ public sealed class SkseDualWieldTests
         var summonFor = FunctionBody(SkseSrc("Forms.cpp"), "RE::SpellItem* Forms::SummonFor");
         Assert.Contains("summonDW", summonFor, StringComparison.Ordinal);
         var prepare = spawn.IndexOf("PrepareFloaterBaseForLoadout", StringComparison.Ordinal);
-        var dismiss = spawn.IndexOf("DismissAllFloaters", StringComparison.Ordinal);
-        Assert.True(prepare >= 0 && dismiss >= 0 && prepare > dismiss,
-            "ActorBase provision must happen after dismiss");
+        var reserve = spawn.IndexOf("ReconcileFloaterCap(1)", StringComparison.Ordinal);
+        Assert.True(prepare >= 0 && reserve > prepare,
+            "ActorBase provision must succeed before existing floaters are evicted");
         var sanitize = spawn.IndexOf("SanitizeLoadout", StringComparison.Ordinal);
         var resolve = spawn.IndexOf("LoadoutWeaponsReady", StringComparison.Ordinal);
-        Assert.True(sanitize >= 0 && sanitize < dismiss,
-            "sanitize loadout before dismiss so a bad Left does not kill the live floater");
-        Assert.True(resolve >= 0 && resolve < dismiss,
-            "resolve both WEAPs before dismiss so a provision miss does not kill the live floater");
+        Assert.True(sanitize >= 0 && sanitize < resolve && resolve < reserve,
+            "sanitize and resolve the loadout before removing a live floater");
     }
 
     [Fact]
@@ -127,7 +129,7 @@ public sealed class SkseDualWieldTests
     {
         var menu = File.ReadAllText(SkseSrc("Menu.cpp"));
         Assert.DoesNotContain("tableLocked", menu, StringComparison.Ordinal);
-        Assert.Contains("Left Hand", menu, StringComparison.Ordinal);
+        Assert.Contains("TableSetupColumn(T(Str::ColumnLeft))", menu, StringComparison.Ordinal);
         Assert.Contains("SetLoadoutLeft", menu, StringComparison.Ordinal);
         Assert.Contains("None", menu, StringComparison.Ordinal);
         Assert.Contains("BeginTable", menu, StringComparison.Ordinal);

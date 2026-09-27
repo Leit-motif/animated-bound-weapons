@@ -28,7 +28,8 @@ function Get-VcpkgRoot {
 
 function Ensure-VcpkgStaticPackages([string]$VcpkgRoot) {
     $triplet = "x64-windows-static"
-    $needed = @("fmt", "spdlog", "xbyak", "rapidcsv")
+    # The alandtse CommonLibSSE-NG fork adds directxtk, directxmath, nlohmann-json, simpleini, toml11.
+    $needed = @("fmt", "spdlog", "xbyak", "rapidcsv", "directxtk", "directxmath", "nlohmann-json", "simpleini", "toml11")
     $missing = @()
     foreach ($pkg in $needed) {
         $share = Join-Path $VcpkgRoot "installed\$triplet\share\$pkg"
@@ -72,6 +73,9 @@ if ($LASTEXITCODE -ne 0) {
     throw "VerifyEsp failed (exit $LASTEXITCODE)"
 }
 
+Write-Host "Writing translation file..."
+& (Join-Path $Root "tools\gen-translations.ps1")
+
 Write-Host "Building SKSE plugin..."
 Push-Location $SkseProject
 try {
@@ -83,6 +87,13 @@ try {
             Write-Host "Discarding SKSE CMake cache (toolchain moved off SSS tools/deps). Reconfigure required once."
             Remove-Item -LiteralPath $buildDir -Recurse -Force
         }
+    }
+    # 1.4.0 moved CommonLibSSE-NG from the CharmedBaryon repository to the alandtse fork; a cached
+    # FetchContent clone of the old remote does not switch cleanly.
+    $subbuild = Join-Path $buildDir "_deps\commonlibsse-subbuild\CMakeLists.txt"
+    if ((Test-Path $subbuild) -and ((Get-Content $subbuild -Raw) -match 'CharmedBaryon')) {
+        Write-Host "Discarding SKSE CMake cache (CommonLibSSE-NG moved to the alandtse fork). Reconfigure required once."
+        Remove-Item -LiteralPath $buildDir -Recurse -Force
     }
     $cmakeArgs = @("-S", ".", "-B", $buildDir, "-DCMAKE_BUILD_TYPE=Release")
     if (-not (Test-Path $cacheFile)) {
@@ -100,4 +111,4 @@ finally {
 
 Write-Host "Build complete."
 Write-Host "Package: $Mod"
-Get-ChildItem $Mod -Recurse -Include *.esp,*.dll,*.ini | ForEach-Object { $_.FullName.Substring($Root.Length + 1) }
+Get-ChildItem $Mod -Recurse -Include *.esp,*.dll,*.ini,*.txt | ForEach-Object { $_.FullName.Substring($Root.Length + 1) }

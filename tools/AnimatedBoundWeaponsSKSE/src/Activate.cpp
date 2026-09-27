@@ -6,6 +6,7 @@
 #include <thread>
 
 #include "Activate.h"
+#include "Balance.h"
 #include "BoundFacts.h"
 #include "FloaterSetup.h"
 #include "FormListStorage.h"
@@ -13,6 +14,7 @@
 #include "Loadout.h"
 #include "PickerMode.h"
 #include "SpellFilters.h"
+#include "Strings.h"
 
 namespace abw
 {
@@ -25,7 +27,7 @@ namespace abw
 
 		void Notify(const char* message)
 		{
-			RE::DebugNotification(message);
+			RE::SendHUDMessage::ShowHUDMessage(message);
 		}
 
 		void PlayErrorSound()
@@ -35,7 +37,7 @@ namespace abw
 				return;
 			}
 			RE::BSSoundHandle handle;
-			manager->BuildSoundDataFromEditorID(handle, "MAGFail", 0x10);
+			manager->GetSoundHandleByName(handle, "MAGFail", 0x10);
 			handle.Play();
 		}
 
@@ -86,141 +88,206 @@ namespace abw
 			}
 		}
 
-		// Dispel every live ABW summon on the player.
-		//
-		// Scans for all four summon spells rather than remembering the last one cast. A
-		// static "currently active" pointer is null again after a save reload while the
-		// saved SummonCreature effect is still running, and the engine only evicts the old
-		// summon when the commanded-actor limit is 1 — with Twin Souls it would sit there
-		// and the recast would stack a second floater beside it.
-		//
-		// Collect before dispelling: Dispel() can unlink the node being visited, so
-		// dispelling inside the walk leaves the iterator pointing at freed memory. This is
-		// the same shape CommonLib's own MagicTarget::DispelEffectsWithArchetype uses.
-		void DispelActiveSummons(RE::Actor* player, const Forms& forms)
-		{
-			auto* target = player->AsMagicTarget();
-			auto* effects = target ? target->GetActiveEffectList() : nullptr;
-			if (!effects) {
-				return;
-			}
+		// The intercept runs within ~0.2 s of the cast. A Bound effect of the same
+		// spell older than this was already in the player's hand (cast in Wield
+		// mode before the toggle) and is not ours to take back.
+		constexpr float kHeldBoundSeconds = 1.0f;
 
-			std::vector<RE::ActiveEffect*> doomed;
+		struct PlayerBoundEffects
+		{
+			std::vector<RE::ActiveEffect*> fresh;
+			std::int32_t held{ 0 };
+		};
+
+		PlayerBoundEffects SplitPlayerBoundEffects(RE::Actor* player, RE::SpellItem* spell)
+		{
+			PlayerBoundEffects split;
+			auto* target = player ? player->AsMagicTarget() : nullptr;
+			auto* effects = target ? target->GetActiveEffectList() : nullptr;
+			if (!effects || !spell) {
+				return split;
+			}
 			for (auto* effect : *effects) {
-				const auto* spell = effect ? effect->spell : nullptr;
-				if (spell && forms.IsAbwSummon(spell)) {
-					doomed.push_back(effect);
+				if (!effect || effect->spell != spell) {
+					continue;
+				}
+				auto* base = effect->GetBaseObject();
+				if (!base ||
+				    base->GetArchetype() != RE::EffectSetting::Archetype::kBoundWeapon) {
+					continue;
+				}
+				if (effect->elapsedSeconds < kHeldBoundSeconds) {
+					split.fresh.push_back(effect);
+				} else if (
+				    !effect->flags.any(RE::ActiveEffect::Flag::kInactive) &&
+				    !effect->flags.any(RE::ActiveEffect::Flag::kDispelled)) {
+					++split.held;
 				}
 			}
+			return split;
+		}
 
-			for (auto* effect : doomed) {
-				effect->Dispel(true);
+		// With nothing held every copy of a tier goes. With a held effect only
+		// unworn copies go, up to the surplus over the held count across all
+		// tiers: the held weapon is the worn one, whatever its Mystic tier, and a
+		// fresh copy still worn belongs to its own dispelled effect's Finish.
+		std::int32_t BoundCopiesToStrip(
+		    const std::int32_t count,
+		    const std::int32_t worn,
+		    const std::int32_t held,
+		    const std::int32_t surplus)
+		{
+			if (held <= 0) {
+				return count;
 			}
-			if (!doomed.empty()) {
-				SKSE::log::info("Dispelled {} active ABW summon effect(s)", doomed.size());
+			return std::min(surplus, std::max(0, count - worn));
+		}
+
+		struct BoundCopies
+		{
+			std::int32_t count{ 0 };
+			std::int32_t worn{ 0 };
+			std::vector<std::pair<RE::ExtraDataList*, std::int32_t>> unwornLists;
+		};
+
+		BoundCopies CountBoundCopies(RE::Actor* player, RE::TESObjectWEAP* weapon)
+		{
+			BoundCopies copies;
+			for (const auto& [obj, data] : player->GetInventory()) {
+				if (obj != weapon) {
+					continue;
+				}
+				copies.count = data.first;
+				auto* lists = data.second ? data.second->extraLists : nullptr;
+				if (!lists) {
+					break;
+				}
+				for (auto* xList : *lists) {
+					if (!xList) {
+						continue;
+					}
+					const auto n = std::max<std::int32_t>(1, xList->GetCount());
+					if (xList->HasType(RE::ExtraDataType::kWorn) ||
+					    xList->HasType(RE::ExtraDataType::kWornLeft)) {
+						copies.worn += n;
+					} else {
+						copies.unwornLists.emplace_back(xList, n);
+					}
+				}
+				break;
 			}
+			return copies;
 		}
 
 		// Skip-BoundItem provisioning masks kBoundWeapon on the shared WEAP while
 		// the floater ActorBase copies inventory. BoundItemEffect::Finish in that
 		// window leaves a real extra on the player — duration and sheathe then
 		// never own it. Unequip+RemoveItem the associated WEAPs even when no
-		// BoundWeapon effect remains (the 100 ms retry).
-		void StripPlayerBoundWeaponItems(RE::Actor* player, RE::SpellItem* spell)
+		// BoundWeapon effect remains (the 100 ms retry). A held effect's copy
+		// stays: see BoundCopiesToStrip.
+		void StripPlayerBoundWeaponItems(
+		    RE::Actor* player, RE::SpellItem* spell, const std::int32_t held)
 		{
 			if (!player || !spell) {
 				return;
 			}
 			const auto facts = ResolveBoundFacts(spell);
-			RE::TESObjectWEAP* weapons[] = {
-				facts.baseWeapon, facts.mystic40Weapon, facts.mystic80Weapon};
+			std::vector<RE::TESObjectWEAP*> weapons;
+			for (auto* weapon : { facts.baseWeapon, facts.mystic40Weapon, facts.mystic80Weapon }) {
+				if (weapon && std::find(weapons.begin(), weapons.end(), weapon) == weapons.end()) {
+					weapons.push_back(weapon);
+				}
+			}
+			std::vector<BoundCopies> copies;
+			std::int32_t total = 0;
+			for (auto* weapon : weapons) {
+				copies.push_back(CountBoundCopies(player, weapon));
+				total += copies.back().count;
+			}
+			std::int32_t surplus = std::max(0, total - held);
 			auto* mgr = RE::ActorEquipManager::GetSingleton();
-			for (std::size_t i = 0; i < 3; ++i) {
+			for (std::size_t i = 0; i < weapons.size(); ++i) {
 				auto* weapon = weapons[i];
-				if (!weapon) {
+				const auto& have = copies[i];
+				const auto strip = BoundCopiesToStrip(have.count, have.worn, held, surplus);
+				if (strip <= 0) {
 					continue;
 				}
-				bool already = false;
-				for (std::size_t j = 0; j < i; ++j) {
-					if (weapons[j] == weapon) {
-						already = true;
-						break;
+				surplus -= strip;
+				if (held <= 0) {
+					if (mgr) {
+						mgr->UnequipObject(
+						    player,
+						    weapon,
+						    nullptr,
+						    static_cast<std::uint32_t>(strip),
+						    nullptr,
+						    false,
+						    true,
+						    false,
+						    true);
+					}
+					player->RemoveItem(
+					    weapon, strip, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+				} else {
+					// Name each unworn list so the engine cannot pick the worn stack;
+					// what remains is plain copies, which carry no extra list at all.
+					auto left = strip;
+					for (const auto& [xList, n] : have.unwornLists) {
+						if (left <= 0) {
+							break;
+						}
+						const auto take = std::min(left, n);
+						player->RemoveItem(
+						    weapon, take, RE::ITEM_REMOVE_REASON::kRemove, xList, nullptr);
+						left -= take;
+					}
+					if (left > 0) {
+						player->RemoveItem(
+						    weapon, left, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
 					}
 				}
-				if (already) {
-					continue;
-				}
-				std::int32_t count = 0;
-				for (const auto& [obj, data] : player->GetInventory()) {
-					if (obj == weapon) {
-						count = data.first;
-						break;
-					}
-				}
-				if (count <= 0) {
-					continue;
-				}
-				if (mgr) {
-					mgr->UnequipObject(
-					    player,
-					    weapon,
-					    nullptr,
-					    static_cast<std::uint32_t>(count),
-					    nullptr,
-					    false,
-					    true,
-					    false,
-					    true);
-				}
-				player->RemoveItem(
-				    weapon, count, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
 				SKSE::log::info(
-				    "Stripped leftover Bound WEAP 0x{:08X} count={} from player after on-cast",
+				    "Stripped leftover Bound WEAP 0x{:08X} count={} kept={} held={} from player after on-cast",
 				    weapon->GetFormID(),
-				    count);
+				    strip,
+				    have.count - strip,
+				    held);
 			}
 		}
 
-		void DispelPlayerBoundWeapon(RE::Actor* player, RE::SpellItem* spell)
+		// With a held copy in inventory, the strip waits for the retry so the
+		// dispelled effect's own Finish has removed its copy before the surplus
+		// over the held count is measured.
+		void DispelPlayerBoundWeapon(RE::Actor* player, RE::SpellItem* spell, const bool retry)
 		{
 			if (!player || !spell) {
 				return;
 			}
-			auto* target = player->AsMagicTarget();
-			auto* effects = target ? target->GetActiveEffectList() : nullptr;
-			if (effects) {
-				std::vector<RE::ActiveEffect*> doomed;
-				for (auto* effect : *effects) {
-					if (!effect || effect->spell != spell) {
-						continue;
-					}
-					auto* base = effect->GetBaseObject();
-					if (base &&
-					    base->GetArchetype() == RE::EffectSetting::Archetype::kBoundWeapon) {
-						doomed.push_back(effect);
-					}
-				}
-				for (auto* effect : doomed) {
-					effect->Dispel(true);
-				}
-				if (!doomed.empty()) {
-					SKSE::log::info(
-					    "Dispelled {} player BoundWeapon effect(s) for on-cast 0x{:08X}",
-					    doomed.size(),
-					    spell->GetFormID());
-				}
+			const auto split = SplitPlayerBoundEffects(player, spell);
+			for (auto* effect : split.fresh) {
+				effect->Dispel(true);
 			}
-			StripPlayerBoundWeaponItems(player, spell);
+			if (!retry && !split.fresh.empty()) {
+				SKSE::log::info(
+				    "Dispelled {} player BoundWeapon effect(s) for on-cast 0x{:08X} held={}",
+				    split.fresh.size(),
+				    spell->GetFormID(),
+				    split.held);
+			}
+			if (retry || split.held == 0) {
+				StripPlayerBoundWeaponItems(player, spell, split.held);
+			}
 		}
 
 		void ScheduleDispelPlayerBoundWeapon(RE::Actor* player, RE::SpellItem* spell)
 		{
-			DispelPlayerBoundWeapon(player, spell);
+			DispelPlayerBoundWeapon(player, spell, false);
 			std::thread([player, spell] {
 				std::this_thread::sleep_for(std::chrono::milliseconds(100));
 				if (auto* tasks = SKSE::GetTaskInterface()) {
 					tasks->AddTask([player, spell] {
-						DispelPlayerBoundWeapon(player, spell);
+						DispelPlayerBoundWeapon(player, spell, true);
 					});
 				}
 			}).detach();
@@ -235,11 +302,11 @@ namespace abw
 			auto& forms = GetForms();
 			loadout = SanitizeLoadout(loadout, forms.leftNone);
 			if (!loadout.right) {
-				Notify("Animated Bound Weapons: no Bound spell assigned");
+				Notify(T(Str::NotifyNoSpell));
 				return false;
 			}
 			if (!player->HasSpell(loadout.right)) {
-				Notify("Animated Bound Weapons: assigned spell is unknown");
+				Notify(T(Str::NotifySpellUnknown));
 				return false;
 			}
 			if (loadout.left && !player->HasSpell(loadout.left)) {
@@ -250,7 +317,7 @@ namespace abw
 			float cost = 0.0f;
 			if (chargeMagicka) {
 				if (!values) {
-					Notify("Animated Bound Weapons: not enough magicka");
+					Notify(T(Str::NotifyNoMagicka));
 					return false;
 				}
 				cost = loadout.right->CalculateMagickaCost(player);
@@ -261,7 +328,7 @@ namespace abw
 					cost = 0.0f;
 				}
 				if (values->GetActorValue(RE::ActorValue::kMagicka) < cost) {
-					Notify("Animated Bound Weapons: not enough magicka");
+					Notify(T(Str::NotifyNoMagicka));
 					return false;
 				}
 			}
@@ -271,29 +338,36 @@ namespace abw
 			if (loadout.left) {
 				duration = std::min(duration, ResolveBoundFacts(loadout.left).duration);
 			}
+			// Ticket 11: ABW_DurationScale multiplies the post-perk Bound duration. The
+			// perk tiers are already inside the spell's effect duration BoundFacts read.
+			const float baseDuration = duration;
+			const float durationScale = ReadScale(forms.durationScale);
+			duration = std::max(1.0f, baseDuration * durationScale);
 			auto* summon = forms.SummonFor(loadout);
 			auto* caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
 			if (!summon || summon->effects.empty() || !caster) {
-				Notify("Animated Bound Weapons: summon spell missing");
+				Notify(T(Str::NotifySummonMissing));
 				return false;
 			}
 			if (!LoadoutWeaponsReady(loadout)) {
-				Notify("Animated Bound Weapons: could not prepare bound weapon");
+				Notify(T(Str::NotifyPrepareFailed));
 				return false;
 			}
 
-			DispelActiveSummons(player, forms);
-			DismissAllFloaters();
-			SetSummonLifetime(summon, duration);
 			if (!PrepareFloaterBaseForLoadout(loadout)) {
-				Notify("Animated Bound Weapons: could not prepare bound weapon");
+				Notify(T(Str::NotifyPrepareFailed));
 				return false;
 			}
+
+			// All knowable failure checks and preparation succeeded. Reserve one cap slot
+			// before irreversible spawn work; never evict peers for a failed preparation.
+			ReconcileFloaterCap(1);
+			SetSummonLifetime(summon, duration);
 			ArmPendingFloaterSpawn(loadout);
 			caster->CastSpellImmediate(summon, false, player, 1.0f, false, 0.0f, player);
 
 			if (chargeMagicka && cost > 0.0f && values) {
-				values->RestoreActorValue(
+				values->ModActorValue(
 				    RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kMagicka, -cost);
 			}
 
@@ -314,13 +388,15 @@ namespace abw
 
 			const auto mode = ReadPickerMode(forms.pickerMode);
 			SKSE::log::info(
-			    "Activate '{}' left='{}' — {} summon=0x{:08X} duration={:.0f}s cost={:.1f} "
-			    "spell=0x{:08X}",
+			    "Activate '{}' left='{}' — {} summon=0x{:08X} duration={:.0f}s (base={:.0f}s "
+			    "scale={:.2f}) cost={:.1f} spell=0x{:08X}",
 			    loadout.right->GetFullName() ? loadout.right->GetFullName() : "(unnamed)",
 			    loadout.left && loadout.left->GetFullName() ? loadout.left->GetFullName() : "(none)",
 			    PickerModeName(mode),
 			    summon->GetFormID(),
 			    duration,
+			    baseDuration,
+			    durationScale,
 			    cost,
 			    loadout.right->GetFormID());
 			return true;
@@ -330,7 +406,7 @@ namespace abw
 		{
 			WriteOnCastArmed(GetForms().onCastArmed, onFloater);
 			SyncAbwPowerDisplayName();
-			Notify(onFloater ? "Bound Weapons Mode: Animate" : "Bound Weapons Mode: Wield");
+			Notify(onFloater ? T(Str::ModeAnimate) : T(Str::ModeWield));
 			SKSE::log::info("On-cast destination {}", onFloater ? "floater" : "self");
 		}
 
@@ -849,7 +925,7 @@ namespace abw
 		{
 			auto& forms = GetForms();
 			if (!forms.assignedSpells && !forms.Resolve()) {
-				Notify("Animated Bound Weapons: forms missing");
+				Notify(T(Str::NotifyFormsMissing));
 				return;
 			}
 
@@ -893,11 +969,11 @@ namespace abw
 			}
 			auto loadout = PickAssignedLoadout(assigned, cycleMode);
 			if (!loadout.right) {
-				Notify("Animated Bound Weapons: no Bound spell assigned");
+				Notify(T(Str::NotifyNoSpell));
 				return;
 			}
 			if (!IsBoundAssignable(loadout.right)) {
-				Notify("Animated Bound Weapons: assigned spell is not supported");
+				Notify(T(Str::NotifySpellUnsupported));
 				return;
 			}
 
@@ -991,7 +1067,7 @@ namespace abw
 					auto* target = event->target.get();
 					auto* caster = event->caster.get();
 					if (target == player || caster == player) {
-						SKSE::log::info(
+						SKSE::log::debug(
 						    "ActiveEffectApply on-cast unmatched uid={} target=0x{:08X} "
 						    "caster=0x{:08X}",
 						    event->activeEffectUniqueID,
@@ -1070,12 +1146,11 @@ namespace abw
 			return;
 		}
 		if (ReadPickerMode(forms.pickerMode) != PickerMode::OnCast) {
-			forms.abwPower->SetFullName("Animated Bound Weapons");
+			forms.abwPower->SetFullName(T(Str::PowerName));
 			return;
 		}
 		forms.abwPower->SetFullName(
-		    ReadOnCastArmed(forms.onCastArmed) ? "Bound Weapons Mode: Animate" :
-		                                         "Bound Weapons Mode: Wield");
+		    ReadOnCastArmed(forms.onCastArmed) ? T(Str::ModeAnimate) : T(Str::ModeWield));
 	}
 
 	void SetOnCastBoundOnFloater(const bool onFloater)

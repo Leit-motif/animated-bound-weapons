@@ -92,7 +92,8 @@ public sealed class SkseRelocAuditTests
             }
         }
 
-        // BoundItemEffect::Start (0x14) is gone — Bound apply already covers equip/draw.
+        // BoundItemEffect::Start and SummonCreatureEffect::Start are absent; the latter
+        // was removed after live tracing showed registration occurs after Start returns.
         Assert.Equal(
             new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "0x15", "0xA6" },
             found);

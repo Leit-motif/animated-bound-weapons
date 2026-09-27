@@ -11,7 +11,7 @@ Nexus page: https://www.nexusmods.com/skyrimspecialedition/mods/192288
 - SKSE Menu Framework.
 - Optional: Spell Perk Item Distributor for the supplied compatibility exclusions.
 
-Runtime testing was performed on SE 1.5.97. The plugin targets SE and AE; AE has not received equivalent runtime testing. VR is unsupported.
+One build targets SE 1.5.97, AE 1.6.x and AE 1.7.x (1.7.99 and 1.7.104; use SKSE 2.3.1 and Address Library v13 there). Runtime testing was performed on SE 1.5.97; AE has not received equivalent runtime testing. VR is unsupported.
 
 ## Usage
 
@@ -27,13 +27,13 @@ Any one-handed, two-handed, or bow Bound weapon spell is supported, including mo
 
 ## Build
 
-Windows prerequisites: Visual Studio 2022 Build Tools with C++ and CMake, .NET 8 SDK, Git, and vcpkg. Set `VCPKG_ROOT` or install vcpkg at `C:\vcpkg`. The build script uses the VS2022 Build Tools CMake installation and installs missing `fmt`, `spdlog`, `xbyak` and `rapidcsv` packages for `x64-windows-static`.
+Windows prerequisites: Visual Studio 2022 Build Tools with C++ and CMake, .NET 8 SDK, Git, and vcpkg. Set `VCPKG_ROOT` or install vcpkg at `C:\vcpkg`. The build script uses the VS2022 Build Tools CMake installation and installs missing `fmt`, `spdlog`, `xbyak`, `rapidcsv`, `directxtk`, `directxmath`, `nlohmann-json`, `simpleini` and `toml11` packages for `x64-windows-static`.
 
 ```powershell
 .\build.ps1
 ```
 
-CommonLibSSE-NG is fetched at the commit pinned in `tools/AnimatedBoundWeaponsSKSE/CMakeLists.txt`. Output is written to `AnimatedBoundWeapons/`: the ESP, `SKSE/Plugins/AnimatedBoundWeapons.dll`, and `ABW_UND_DISTR.ini`. The generator also writes a local, ignored form-ID report.
+CommonLibSSE-NG (the alandtse fork, GPL-3.0-or-later) is fetched at the commit pinned in `tools/AnimatedBoundWeaponsSKSE/CMakeLists.txt`. Output is written to `AnimatedBoundWeapons/`: the ESP, `SKSE/Plugins/AnimatedBoundWeapons.dll`, and `ABW_UND_DISTR.ini`. The generator also writes a local, ignored form-ID report.
 
 ## Source layout and checks
 

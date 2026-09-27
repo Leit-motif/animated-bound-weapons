@@ -191,10 +191,10 @@ namespace abw
 		if (!actor || !target) {
 			return;
 		}
-		// Address Library SE 37608 / AE 38561 (1.5.97 / 1.6.x). Wrapped as
-		// Actor::StartCombat(Actor*, CombatGroup*) in alandtse/CommonLibVR ng
-		// src/RE/A/Actor.cpp. This project's CharmedBaryon pin b93280e does not
-		// wrap the call; the pair is not a proximity guess. 2-arg RELOCATION_ID
+		// Address Library SE 37608 / AE 38561 (1.5.97 / 1.6.x / 1.7.x). The pinned
+		// alandtse fork wraps the same pair as Actor::StartCombat(Actor*, CombatGroup*)
+		// in src/RE/A/Actor.cpp; the direct call stays so SkseRelocAuditTests keeps
+		// naming every relocation this plugin owns. 2-arg RELOCATION_ID
 		// would reuse the SE id on VR, which SKSEPlugin_Load refuses.
 		using func_t = bool (*)(RE::Actor*, RE::Actor*, RE::CombatGroup*);
 		static REL::Relocation<func_t> func{ RELOCATION_ID(37608, 38561) };

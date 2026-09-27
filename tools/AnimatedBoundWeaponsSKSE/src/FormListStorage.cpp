@@ -133,14 +133,14 @@ namespace abw
     {
         std::scoped_lock lock(gMutex);
         if (gLoadFailed) {
-            RE::DebugNotification("ABW: loadout data could not be read. See the ABW log.");
+            RE::SendHUDMessage::ShowHUDMessage("ABW: loadout data could not be read. See the ABW log.");
         } else if (!gLoadedRecord) {
             const auto hasLegacy = [](RE::BGSListForm* list) {
                 return list && (list->scriptAddedFormCount || !list->forms.empty());
             };
             SKSE::log::info("No loadout record; starting empty (legacy FormLists are not imported)");
             if (hasLegacy(right) || hasLegacy(left)) {
-                RE::DebugNotification("ABW: storage updated. Please rebuild your loadout rows once.");
+                RE::SendHUDMessage::ShowHUDMessage("ABW: storage updated. Please rebuild your loadout rows once.");
             }
         }
     }

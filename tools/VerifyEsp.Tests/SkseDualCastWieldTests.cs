@@ -2,7 +2,11 @@ using Xunit;
 
 namespace AnimatedBoundWeapons.VerifyEsp.Tests;
 
-/// <summary>Static source checks; these do not establish in-game behavior.</summary>
+/// <summary>
+/// Dual Casting → dual-wield toggle — static seam pins from
+/// <c>.scratch/abw-dual-cast-wield/spec.md</c>. Live gates are
+/// <c>docs/test-results.md</c>, not this class.
+/// </summary>
 public sealed class SkseDualCastWieldTests
 {
     static string RepoRoot => GoodEsp.FindRepoRoot();
@@ -101,7 +105,7 @@ public sealed class SkseDualCastWieldTests
     public void Menu_writes_dual_cast_wield_not_on_cast_destination()
     {
         var menu = File.ReadAllText(SkseSrc("Menu.cpp"));
-        Assert.Contains("Checkbox(\"Dual Cast Wield\"", menu, StringComparison.Ordinal);
+        Assert.Contains("Checkbox(T(Str::DualCastWield)", menu, StringComparison.Ordinal);
         Assert.Contains("WriteDualCastWield", menu, StringComparison.Ordinal);
         Assert.DoesNotContain("WriteOnCastArmed", menu, StringComparison.Ordinal);
     }

@@ -34,12 +34,18 @@ struct BGSListForm {
         }
     }
 };
-inline void DebugNotification(const char*) {}
+namespace SendHUDMessage {
+inline void ShowHUDMessage(const char*, const char* = nullptr, bool = true) {}
+}
 }
 namespace SKSE::log {
 template<class... T> void info(const char*, T&&...) {}
 template<class... T> void warn(const char*, T&&...) {}
 template<class... T> void error(const char*, T&&...) {}
+}
+namespace SKSE::Translation {
+inline void ParseTranslation(const std::string&) {}
+inline bool Translate(const std::string&, std::string&) { return false; }
 }
 namespace SKSE {
 struct SerializationInterface {

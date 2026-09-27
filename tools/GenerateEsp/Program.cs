@@ -13,7 +13,7 @@ var modKey = ModKey.FromNameAndExtension("AnimatedBoundWeapons.esp");
 var mod = new SkyrimMod(modKey, SkyrimRelease.SkyrimSE);
 mod.ModHeader.Flags |= SkyrimModHeader.HeaderFlag.LightMaster;
 mod.ModHeader.Description =
-    "Animated Bound Weapons — assign Bound-archetype spells via SKSE Menu; lesser power spawns a floater.";
+    "Animated Bound Weapons v1.3.1 — cast a Bound weapon spell and it fights on its own. Settings in SKSE Menu Framework.";
 mod.ModHeader.MasterReferences.Add(new MasterReference { Master = skyrimKey, FileSize = 0 });
 
 // --- Assignment table + Bound perk copy list ---
@@ -251,7 +251,7 @@ var power = mod.Spells.AddNew(mod.GetNextFormKey());
 power.EditorID = "ABW_Power";
 power.Name = "Animated Bound Weapons";
 power.Description =
-    "Summon an animated Bound weapon. Cycle and Random shout from the assignment table; On-cast uses the Bound spell you just cast.";
+    "Summons the next weapon on your summon list. In On cast mode, switches Bound spells between Animate and Wield.";
 power.Type = SpellType.LesserPower;
 power.CastType = CastType.FireAndForget;
 power.TargetType = TargetType.Self;
@@ -362,6 +362,70 @@ var summonDw = CreateSummonSpell("ABW_Summon_DW", summonMgefDw);
 var dualCastWield = new GlobalFloat(mod) { EditorID = "ABW_DualCastWield", Data = 1.0f };
 mod.Globals.Add(dualCastWield);
 
+// 1.2.0 balance sliders (post-v1 ticket 11). Multiplies the post-perk Bound duration
+// written onto the summon effect, and AttackDamageMult on the floater. 1.0 / 1.0 is
+// 1.1.1 behavior. Shipped defaults halve the lifetime and trim damage a quarter — the
+// floater is Invulnerable by design, so duration is the lever that stops it carrying a
+// dungeon. Created last so existing ESL local IDs do not shift.
+var durationScale = new GlobalFloat(mod) { EditorID = "ABW_DurationScale", Data = 0.5f };
+mod.Globals.Add(durationScale);
+var damageScale = new GlobalFloat(mod) { EditorID = "ABW_DamageScale", Data = 0.75f };
+mod.Globals.Add(damageScale);
+
+// 1 = the Bow floater carries ABW_Ammo_Hidden instead of the resolved arrow (ticket 09).
+var hideQuiver = new GlobalFloat(mod) { EditorID = "ABW_HideQuiver", Data = 0.0f };
+mod.Globals.Add(hideQuiver);
+
+// Bound Arrow (Skyrim.esm 10B0A7) with no world model: same projectile, damage, and
+// keyword, so the bow fires exactly as before with no quiver mesh on the floater.
+var ammoHidden = mod.Ammunitions.AddNew(mod.GetNextFormKey());
+ammoHidden.EditorID = "ABW_Ammo_Hidden";
+ammoHidden.Name = "Bound Arrow";
+ammoHidden.Keywords = new();
+ammoHidden.Keywords.Add(new FormKey(skyrimKey, 0x10D501)); // WeapTypeBoundArrow
+ammoHidden.Projectile = new FormLink<IProjectileGetter>(new FormKey(skyrimKey, 0x10B0A5)); // BoundArrowProjectile
+ammoHidden.Flags = Ammunition.Flag.NonBolt;
+ammoHidden.Damage = 24f;
+ammoHidden.Value = 0;
+ammoHidden.Weight = 0.1f;
+
+// Floater summon pool (append-only after ABW_Ammo_Hidden so existing ESL local IDs
+// do not shift). Shared 1–10 live floater limit, set from the Balance menu slider.
+var floaterCap = new GlobalFloat(mod) { EditorID = "ABW_FloaterCap", Data = 1.0f };
+mod.Globals.Add(floaterCap);
+
+// CLF recognizes these EditorIDs by name, so local keywords are the intended identity:
+// Conjuration Limit Fix 1.4.1 (Nexus 117155) matches "MagicSpecialConjuration" and the
+// "MagicSummon"/"BaseOne" substrings through GetFormEditorID, and ships no master to link.
+// MagicSpecialConjuration keeps ABW out of the ordinary pool; ten BaseOne MagicSummonABW*
+// pools allow up to ten ABW effects when CLF is present. Not a substitute for verified
+// Start-stash isolation.
+var kwSpecial = mod.Keywords.AddNew(mod.GetNextFormKey());
+kwSpecial.EditorID = "MagicSpecialConjuration";
+// One BaseOne pool per slot of the 1-10 cap (kFloaterCapMax). Appending more keeps the
+// first four at their shipped local IDs.
+var kwAbwPools = new Keyword[10];
+for (var i = 0; i < kwAbwPools.Length; i++)
+{
+    kwAbwPools[i] = mod.Keywords.AddNew(mod.GetNextFormKey());
+    kwAbwPools[i].EditorID = $"MagicSummonABW{i + 1}BaseOne";
+}
+
+void AttachClfKeywords(MagicEffect mgef)
+{
+    mgef.Keywords ??= new();
+    mgef.Keywords.Add(kwSpecial.FormKey);
+    foreach (var kw in kwAbwPools)
+    {
+        mgef.Keywords.Add(kw.FormKey);
+    }
+}
+
+AttachClfKeywords(summonMgef1H);
+AttachClfKeywords(summonMgef2H);
+AttachClfKeywords(summonMgefBow);
+AttachClfKeywords(summonMgefDw);
+
 Directory.CreateDirectory(modFolder);
 Directory.CreateDirectory(docsDir);
 mod.WriteToBinary(espPath);
@@ -389,6 +453,14 @@ var lines = new List<string>
     $"ABW_Summon_DW: 0x{summonDw.FormKey.ID:X}",
     $"ABW_CSTY_DW: 0x{cstyDw.FormKey.ID:X}",
     $"ABW_DualCastWield: 0x{dualCastWield.FormKey.ID:X}  (1=Dual Casting 1H Bound becomes dual-wield)",
+    $"ABW_DurationScale: 0x{durationScale.FormKey.ID:X}  (floater lifetime multiplier, default 0.5)",
+    $"ABW_DamageScale: 0x{damageScale.FormKey.ID:X}  (floater AttackDamageMult, default 0.75)",
+    $"ABW_HideQuiver: 0x{hideQuiver.FormKey.ID:X}  (1=Bow floater carries ABW_Ammo_Hidden)",
+    $"ABW_Ammo_Hidden: 0x{ammoHidden.FormKey.ID:X}",
+    $"ABW_FloaterCap: 0x{floaterCap.FormKey.ID:X}  (default 1, range 1-10; Balance menu slider)",
+    $"MagicSpecialConjuration: 0x{kwSpecial.FormKey.ID:X}  (optional CLF)",
+    $"MagicSummonABW1BaseOne..MagicSummonABW{kwAbwPools.Length}BaseOne: " +
+        string.Join(", ", kwAbwPools.Select(k => $"0x{k.FormKey.ID:X}")),
 };
 File.WriteAllLines(formIdsPath, lines);
 

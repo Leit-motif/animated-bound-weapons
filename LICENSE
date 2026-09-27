@@ -19,8 +19,10 @@ LICENSING
 
 The original Animated Bound Weapons code is offered under GPL-3.0-or-later,
 with the modding exception below. Third-party dependencies retain their own
-licenses; see THIRD-PARTY-NOTICES.txt. The pinned CommonLibSSE-NG revision
-used by this build is MIT-licensed.
+licenses; see THIRD-PARTY-NOTICES.txt. Since 1.4.0 the DLL links the
+alandtse CommonLibSSE-NG fork, which is GPL-3.0-or-later with the same modding
+and linking exceptions; its source is in the public repository,
+https://github.com/Leit-motif/animated-bound-weapons.
 
 
 MODDING EXCEPTION (as used by Thu'um Reborn)

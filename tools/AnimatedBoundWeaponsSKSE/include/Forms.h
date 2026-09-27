@@ -14,6 +14,11 @@ namespace abw
 		RE::TESGlobal*   powerOptOut{ nullptr };
 		RE::TESGlobal*   onCastArmed{ nullptr };
 		RE::TESGlobal*   dualCastWield{ nullptr };
+		RE::TESGlobal*   durationScale{ nullptr };
+		RE::TESGlobal*   damageScale{ nullptr };
+		RE::TESGlobal*   hideQuiver{ nullptr };
+		RE::TESGlobal*   floaterCap{ nullptr };
+		RE::TESAmmo*     ammoHidden{ nullptr };
 		RE::SpellItem*   summon1H{ nullptr };
 		RE::SpellItem*   summon2H{ nullptr };
 		RE::SpellItem*   summonBow{ nullptr };

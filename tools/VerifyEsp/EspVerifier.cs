@@ -145,6 +145,45 @@ public static class EspVerifier
         else
             pass("ABW_DualCastWield defaults to 1 (dual-wield)");
 
+        // 1.2.0 — ticket 11 sliders and the ticket 09 quiver toggle.
+        var durationScale = mod.Globals.FirstOrDefault(g => g.EditorID == "ABW_DurationScale");
+        if (durationScale is null)
+            fail("missing ABW_DurationScale");
+        else if (!GlobalEquals(durationScale, 0.5f))
+            fail("ABW_DurationScale must default to 0.5");
+        else
+            pass("ABW_DurationScale defaults to 0.5");
+
+        var damageScale = mod.Globals.FirstOrDefault(g => g.EditorID == "ABW_DamageScale");
+        if (damageScale is null)
+            fail("missing ABW_DamageScale");
+        else if (!GlobalEquals(damageScale, 0.75f))
+            fail("ABW_DamageScale must default to 0.75");
+        else
+            pass("ABW_DamageScale defaults to 0.75");
+
+        var hideQuiver = mod.Globals.FirstOrDefault(g => g.EditorID == "ABW_HideQuiver");
+        if (hideQuiver is null)
+            fail("missing ABW_HideQuiver");
+        else if (!GlobalEquals(hideQuiver, 0.0f))
+            fail("ABW_HideQuiver must default to 0");
+        else
+            pass("ABW_HideQuiver defaults to 0");
+
+        var ammoHidden = mod.Ammunitions.FirstOrDefault(a => a.EditorID == "ABW_Ammo_Hidden");
+        if (ammoHidden is null)
+            fail("missing ABW_Ammo_Hidden");
+        else if (ammoHidden.Model is not null)
+            fail("ABW_Ammo_Hidden must have no world model (that is the whole point)");
+        else if (ammoHidden.Projectile.FormKey != new FormKey(SkyrimKey, 0x10B0A5))
+            fail("ABW_Ammo_Hidden must fire BoundArrowProjectile (Skyrim.esm 10B0A5)");
+        else if (Math.Abs(ammoHidden.Damage - 24f) > 0.001f)
+            fail("ABW_Ammo_Hidden must match Bound Arrow damage (24)");
+        else if (ammoHidden.Keywords is null || !ammoHidden.Keywords.Any(k => k.FormKey == new FormKey(SkyrimKey, 0x10D501)))
+            fail("ABW_Ammo_Hidden must carry WeapTypeBoundArrow");
+        else
+            pass("ABW_Ammo_Hidden is Bound Arrow without a model");
+
         if (mod.FormLists.FirstOrDefault(f => f.EditorID == "ABW_AssignedLeftSpells") is null)
             fail("missing ABW_AssignedLeftSpells");
         else

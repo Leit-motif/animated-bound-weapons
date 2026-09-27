@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(AnimatedBoundWeapons VERSION 1.0.0 LANGUAGES CXX)
+project(AnimatedBoundWeapons VERSION 1.4.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,13 +11,15 @@ set(ENABLE_SKYRIM_AE ON CACHE BOOL "" FORCE)
 set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 
-# Pin: b93280e Fix light-mod count (#97). Bump this only as its own change.
-set(ABW_COMMONLIBSSE_GIT_TAG "b93280e832f263dbef44e44cbe2936622a02f91a")
+# Pin: alandtse fork tag v9.1.0, by commit so the tag cannot move under a release. The first NG line that loads on Skyrim 1.7.99+: it reads
+# the format-5 Address Library, versions the 1.7.99 SkyrimVM/PlayerCharacter layouts, and sets
+# the SKSE AddressLibraryV5 flag. Bump this only as its own change.
+set(ABW_COMMONLIBSSE_GIT_TAG "a898f469851c464d05137bb74b069dd234897643")
 
 include(FetchContent)
 FetchContent_Declare(
     CommonLibSSE
-    GIT_REPOSITORY https://github.com/CharmedBaryon/CommonLibSSE-NG.git
+    GIT_REPOSITORY https://github.com/alandtse/CommonLibSSE-NG.git
     GIT_TAG ${ABW_COMMONLIBSSE_GIT_TAG}
     GIT_PROGRESS TRUE
 )
@@ -39,6 +41,9 @@ set(SOURCES
     src/PowerGrant.cpp
     src/Menu.cpp
     src/Loadout.cpp
+    src/Strings.cpp
+    src/PluginVmad.cpp
+    src/BoundAmmo.cpp
 )
 
 add_commonlibsse_plugin(

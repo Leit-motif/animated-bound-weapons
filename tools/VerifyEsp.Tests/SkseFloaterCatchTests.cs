@@ -28,7 +28,7 @@ public sealed class SkseFloaterCatchTests
     }
 
     [Fact]
-    public void ArmPending_clears_stale_SetupDone()
+    public void ArmPending_preserves_live_SetupDone_peers()
     {
         var lines = File.ReadAllLines(FloaterSetupCpp());
         var start = Array.FindIndex(
@@ -43,8 +43,17 @@ public sealed class SkseFloaterCatchTests
         }
 
         var body = string.Join('\n', lines[start..end]);
-        Assert.Contains("SetupDone().clear()", body, StringComparison.Ordinal);
-        Assert.Contains("AwaitEquipTries().store(0)", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("SetupDone().clear()", body, StringComparison.Ordinal);
+        Assert.Contains("pending.session = FloaterSession()", body, StringComparison.Ordinal);
+        Assert.Contains(
+            "pending.preexistingActors.insert(entry.actorHandle.native_handle())",
+            body,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "!pending.preexistingActors.contains(actorHandle.native_handle())",
+            string.Join('\n', lines),
+            StringComparison.Ordinal);
+        Assert.Contains("GetAwaitEquip() = {}", body, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -158,7 +167,7 @@ public sealed class SkseFloaterCatchTests
         Assert.Contains("ForEachContainerObject", text, StringComparison.Ordinal);
         Assert.Contains("As<RE::TESAmmo>()", text, StringComparison.Ordinal);
         Assert.Contains("GetCurrentAmmo()", text, StringComparison.Ordinal);
-        Assert.Contains("EquipBaseAmmo(floater)", text, StringComparison.Ordinal);
+        Assert.Matches(@"EquipBaseAmmo\(\s*floater,", text);
         Assert.DoesNotContain("EquipBaseAmmo(actor)", text, StringComparison.Ordinal);
         Assert.DoesNotContain("DisableFloaterWorldCollision", text, StringComparison.Ordinal);
     }

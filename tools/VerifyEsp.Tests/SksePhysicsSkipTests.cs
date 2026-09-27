@@ -2,7 +2,10 @@ using Xunit;
 
 namespace AnimatedBoundWeapons.VerifyEsp.Tests;
 
-/// <summary>Static source checks; these do not establish in-game behavior.</summary>
+/// <summary>
+/// Floater physics skip — identity SPID + SKSE 3D retarget. Live SMP/CBPC
+/// proof is <c>docs/test-results.md</c>, not this class.
+/// </summary>
 public sealed class SksePhysicsSkipTests
 {
     static string RepoRoot => GoodEsp.FindRepoRoot();

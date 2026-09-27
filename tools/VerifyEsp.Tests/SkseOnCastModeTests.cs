@@ -2,7 +2,11 @@ using Xunit;
 
 namespace AnimatedBoundWeapons.VerifyEsp.Tests;
 
-/// <summary>Static source checks; these do not establish in-game behavior.</summary>
+/// <summary>
+/// On-cast picker mode — static seam pins from
+/// <c>.scratch/abw-on-cast-mode/spec.md</c>. Live magicka / loadout / shout
+/// behaviour is <c>docs/test-results.md</c>, not this class.
+/// </summary>
 public sealed class SkseOnCastModeTests
 {
     static string RepoRoot => GoodEsp.FindRepoRoot();
@@ -88,7 +92,8 @@ public sealed class SkseOnCastModeTests
     public void On_cast_does_not_debit_table_magicka()
     {
         var onCast = FunctionBody(SkseSrc("Activate.cpp"), "void ActivateFromBoundCast");
-        Assert.DoesNotContain("RestoreActorValue", onCast, StringComparison.Ordinal);
+        // The table path charges magicka through ActorValueOwner vfunc 06 (ModActorValue).
+        Assert.DoesNotContain("ModActorValue(", onCast, StringComparison.Ordinal);
         Assert.Contains("FinishOnCastSpawn", onCast, StringComparison.Ordinal);
         var finish = FunctionBody(SkseSrc("Activate.cpp"), "void FinishOnCastSpawn");
         Assert.Contains(
@@ -142,8 +147,8 @@ public sealed class SkseOnCastModeTests
         var dest = FunctionBody(SkseSrc("Activate.cpp"), "void ApplyOnCastDestination");
         Assert.DoesNotContain("DismissAllFloaters", dest, StringComparison.Ordinal);
         Assert.DoesNotContain("DispelActiveSummons", dest, StringComparison.Ordinal);
-        Assert.Contains("Bound Weapons Mode: Animate", dest, StringComparison.Ordinal);
-        Assert.Contains("Bound Weapons Mode: Wield", dest, StringComparison.Ordinal);
+        Assert.Contains("T(Str::ModeAnimate)", dest, StringComparison.Ordinal);
+        Assert.Contains("T(Str::ModeWield)", dest, StringComparison.Ordinal);
         Assert.DoesNotContain("On-cast - Bound on floater", dest, StringComparison.Ordinal);
         Assert.DoesNotContain("On-cast - Bound on self", dest, StringComparison.Ordinal);
         Assert.Contains("SyncAbwPowerDisplayName", dest, StringComparison.Ordinal);
@@ -153,20 +158,19 @@ public sealed class SkseOnCastModeTests
     public void Menu_exposes_on_cast_and_power_buttons()
     {
         var menu = File.ReadAllText(SkseSrc("Menu.cpp"));
-        Assert.Contains("On-cast", menu, StringComparison.Ordinal);
-        Assert.Contains("Grant Power", menu, StringComparison.Ordinal);
-        Assert.Contains("Remove Power", menu, StringComparison.Ordinal);
+        Assert.Contains("T(Str::PickOnCast)", menu, StringComparison.Ordinal);
+        Assert.Contains("Button(T(Str::GrantPower))", menu, StringComparison.Ordinal);
+        Assert.Contains("Button(T(Str::RemovePower))", menu, StringComparison.Ordinal);
         Assert.Contains("BeginDisabled", menu, StringComparison.Ordinal);
         Assert.DoesNotContain("Refresh Power", menu, StringComparison.Ordinal);
-        Assert.Contains("Combo(\"Pick mode\"", menu, StringComparison.Ordinal);
+        Assert.Contains("Combo(T(Str::PickMode)", menu, StringComparison.Ordinal);
         Assert.Contains("PickerModeGetter, nullptr, 3", menu, StringComparison.Ordinal);
         Assert.Contains("SyncAbwPowerForPickerMode", menu, StringComparison.Ordinal);
-        Assert.Contains("Bound Weapons Mode:", menu, StringComparison.Ordinal);
-        Assert.Contains("Animate", menu, StringComparison.Ordinal);
-        Assert.Contains("Wield", menu, StringComparison.Ordinal);
+        Assert.Contains("T(Str::ModeAnimate)", menu, StringComparison.Ordinal);
+        Assert.Contains("T(Str::ModeWield)", menu, StringComparison.Ordinal);
         Assert.DoesNotContain("Bound goes to", menu, StringComparison.Ordinal);
         Assert.Contains("SyncAbwPowerDisplayName", menu, StringComparison.Ordinal);
-        Assert.Contains("Checkbox(\"Dual Cast Wield\"", menu, StringComparison.Ordinal);
+        Assert.Contains("Checkbox(T(Str::DualCastWield)", menu, StringComparison.Ordinal);
         Assert.DoesNotContain("SetOnCastBoundOnFloater", menu, StringComparison.Ordinal);
         var open = FunctionBody(SkseSrc("Menu.cpp"), "void OnMenuOpenRefresh");
         Assert.DoesNotContain("RefreshAbwPower", open, StringComparison.Ordinal);
@@ -223,7 +227,8 @@ public sealed class SkseOnCastModeTests
     public void On_cast_strip_removes_leftover_bound_weap()
     {
         var dispel = FunctionBody(SkseSrc("Activate.cpp"), "void DispelPlayerBoundWeapon");
-        Assert.Contains("StripPlayerBoundWeaponItems(player, spell)", dispel, StringComparison.Ordinal);
+        Assert.Contains("StripPlayerBoundWeaponItems(player, spell, split.held)", dispel, StringComparison.Ordinal);
+        Assert.Contains("SplitPlayerBoundEffects(player, spell)", dispel, StringComparison.Ordinal);
 
         var strip = FunctionBody(SkseSrc("Activate.cpp"), "void StripPlayerBoundWeaponItems");
         Assert.Contains("ResolveBoundFacts(spell)", strip, StringComparison.Ordinal);

@@ -115,6 +115,26 @@ int main() {
         player.effects={&effect,&clone};
         CopyDualBoundDuration(&player,&sword);
         Check(clone.duration==264 && clone.elapsedSeconds==0.2f,"clone copies dual duration and elapsed");
+        // Wield then Animate: the sword already in hand outlives the intercepted cast.
+        RE::ActiveEffect held; held.spell=&sword; held.base=&bound; held.elapsedSeconds=30;
+        RE::ActiveEffect fresh; fresh.spell=&sword; fresh.base=&bound; fresh.elapsedSeconds=0.1f;
+        RE::ActiveEffect otherHeld; otherHeld.spell=&hammer; otherHeld.base=&bound; otherHeld.elapsedSeconds=30;
+        RE::ActiveEffect gone; gone.spell=&sword; gone.base=&bound; gone.elapsedSeconds=30; gone.flags.value=262144;
+        RE::EffectSetting other; other.type=RE::EffectSetting::Archetype::kOther;
+        RE::ActiveEffect notBound; notBound.spell=&sword; notBound.base=&other; notBound.elapsedSeconds=0;
+        player.effects={&held,&fresh,&otherHeld,&gone,&notBound};
+        auto split=SplitPlayerBoundEffects(&player,&sword);
+        Check(split.fresh.size()==1 && split.fresh[0]==&fresh,"only the intercepted effect is dispelled");
+        Check(split.held==1,"held counts this spell's live older effects only");
+        player.effects={&fresh};
+        split=SplitPlayerBoundEffects(&player,&sword);
+        Check(split.fresh.size()==1 && split.held==0,"nothing held: the new effect is dispelled");
+        Check(BoundCopiesToStrip(2,0,0,2)==2,"nothing held strips every copy");
+        Check(BoundCopiesToStrip(2,1,1,1)==1,"held: the unworn surplus copy goes");
+        Check(BoundCopiesToStrip(2,2,1,1)==0,"held: a worn copy never goes, even over the count");
+        Check(BoundCopiesToStrip(1,1,1,0)==0,"held: the held copy stays");
+        Check(BoundCopiesToStrip(1,0,1,1)==1,"held Mystic tier: a stray base copy goes, worn tier untouched");
+        Check(BoundCopiesToStrip(3,0,1,1)==1,"held: strip stops at the surplus");
         std::cout << "PASS: on-cast event sequences and dual-effect filtering\n";
     } catch(const std::exception& ex) { std::cerr << "FAIL: " << ex.what() << '\n'; return 1; }
 }

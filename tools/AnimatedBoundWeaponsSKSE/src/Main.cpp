@@ -1,6 +1,7 @@
 #include "PCH.h"
 
 #include "Activate.h"
+#include "BoundAmmo.h"
 #include "FloaterSetup.h"
 #include "FormListStorage.h"
 #include "Forms.h"
@@ -8,6 +9,7 @@
 #include "PickerMode.h"
 #include "PlayerSpells.h"
 #include "PowerGrant.h"
+#include "Strings.h"
 
 namespace
 {
@@ -46,6 +48,7 @@ namespace
 		}
 		// A save taken with a floater alive restores the actor without its setup — hostile,
 		// no Bound weapon, no owner. Anything the summon effect no longer commands goes.
+		abw::BeginFloaterSession();
 		abw::DismissOrphanFloaters();
 		// ABW_Power: all picker modes use Voice (table spawn or on-cast destination
 		// toggle). Grant on load when a supported Bound is known unless Remove
@@ -59,9 +62,27 @@ namespace
 		}
 		switch (message->type) {
 		case SKSE::MessagingInterface::kDataLoaded:
+			// Translations first: the menu section name and the power's display name
+			// read the table when they register, and both happen below.
+			abw::LoadTranslations();
+			abw::ClearBoundAmmoCache();
 			abw::GetForms().Resolve();
 			abw::RegisterActivateSink();
 			abw::RegisterFloaterSetup();
+			abw::RegisterMenu();
+			abw::SetClfPresent(GetModuleHandleA("SummonActorLimitOverhaul.dll") != nullptr);
+			if (abw::ClfPresent()) {
+				SKSE::log::info("CLF SummonActorLimitOverhaul.dll present — ABW cap slider enabled");
+			} else {
+				SKSE::log::info(
+				    "CLF SummonActorLimitOverhaul.dll not loaded — vanilla summon limit, slider hidden");
+			}
+			break;
+		case SKSE::MessagingInterface::kPreLoadGame:
+			// Restored floaters fire their catch events during the load, before
+			// kPostLoadGame. Drop the previous save's setup records and deferred work
+			// first, or a reused FF FormID picks up another actor's loadout.
+			abw::BeginFloaterSession();
 			break;
 		case SKSE::MessagingInterface::kNewGame:
 		case SKSE::MessagingInterface::kPostLoadGame:
@@ -75,7 +96,8 @@ namespace
 
 SKSEPluginLoad(const SKSE::LoadInterface* skse)
 {
-	SKSE::Init(skse);
+	// SetupLog owns AnimatedBoundWeapons.log; the fork's Init would open it first.
+	SKSE::Init(skse, { .log = false });
 	SetupLog();
 
 	if (skse->IsEditor()) {
@@ -84,13 +106,14 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
 	}
 
 	const auto runtime = skse->RuntimeVersion();
-	// add_commonlibsse_plugin advertises Address Library independence, so SKSE
-	// will load this DLL on any runtime that has an address library — including
-	// VR. ENABLE_SKYRIM_VR is off: vfunc slots (SummonFinish 0x15, DontLowerHands
-	// 0xA6) are the SE/AE indices. VR 1.4.15 sits below the SE 1.5.97 floor.
+	// add_commonlibsse_plugin advertises Address Library independence (with the
+	// AddressLibraryV5 bit SKSE requires on 1.7.99+), so SKSE will load this DLL on
+	// any runtime that has an address library — including VR. ENABLE_SKYRIM_VR is
+	// off: vfunc slots (SummonFinish 0x15, DontLowerHands 0xA6) are the SE/AE
+	// indices. VR 1.4.15 sits below the SE 1.5.97 floor.
 	if (runtime < SKSE::RUNTIME_SSE_1_5_97) {
 		SKSE::log::critical(
-		    "Unsupported Skyrim runtime {} — need SE 1.5.97+ or AE 1.6.x (VR {} is off)",
+		    "Unsupported Skyrim runtime {} — need SE 1.5.97+ or AE 1.6.x / 1.7.x (VR {} is off)",
 		    runtime.string(),
 		    SKSE::RUNTIME_VR_1_4_15.string());
 		return false;
@@ -113,6 +136,6 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
 	if (!abw::RegisterLoadoutSerialization()) {
 		return false;
 	}
-	abw::RegisterMenu();
+	// RegisterMenu runs at kDataLoaded, after the translation table is filled.
 	return true;
 }
