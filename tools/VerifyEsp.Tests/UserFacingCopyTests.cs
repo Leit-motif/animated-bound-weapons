@@ -25,6 +25,21 @@ public sealed class UserFacingCopyTests
     }
 
     [Fact]
+    public void Menu_strings_are_printable_ascii()
+    {
+        // SKSE Menu Framework's default font has no em dash; 1.4.0 drew "%s — shout to switch"
+        // as "Wield ? shout to switch". Translations may use their own scripts; the English
+        // fallback compiled into the DLL may not.
+        var strings = File.ReadAllText(
+            Path.Combine(RepoRoot, "tools", "AnimatedBoundWeaponsSKSE", "include", "Strings.inc"));
+        var offenders = Regex.Matches(strings, @"ABW_STR\((\w+),\s*""((?:[^""\\]|\\.)*)""\)")
+            .Where(m => m.Groups[2].Value.Any(c => c < 0x20 || c > 0x7E))
+            .Select(m => $"{m.Groups[1].Value}: {m.Groups[2].Value}")
+            .ToList();
+        Assert.True(offenders.Count == 0, "non-ASCII menu strings: " + string.Join("; ", offenders));
+    }
+
+    [Fact]
     public void Esp_names_never_say_floater()
     {
         var mod = SkyrimMod.CreateFromBinary(GoodEsp.Path, SkyrimRelease.SkyrimSE);

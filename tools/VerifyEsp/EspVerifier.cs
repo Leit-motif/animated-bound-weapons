@@ -170,6 +170,14 @@ public static class EspVerifier
         else
             pass("ABW_HideQuiver defaults to 0");
 
+        var enemiesIgnore = mod.Globals.FirstOrDefault(g => g.EditorID == "ABW_EnemiesIgnore");
+        if (enemiesIgnore is null)
+            fail("missing ABW_EnemiesIgnore");
+        else if (!GlobalEquals(enemiesIgnore, 1.0f))
+            fail("ABW_EnemiesIgnore must default to 1");
+        else
+            pass("ABW_EnemiesIgnore defaults to 1");
+
         var ammoHidden = mod.Ammunitions.FirstOrDefault(a => a.EditorID == "ABW_Ammo_Hidden");
         if (ammoHidden is null)
             fail("missing ABW_Ammo_Hidden");

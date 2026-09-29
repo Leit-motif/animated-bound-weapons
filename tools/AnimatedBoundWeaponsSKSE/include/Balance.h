@@ -2,6 +2,7 @@
 
 #include "FloaterCap.h"
 
+#include <atomic>
 #include <cmath>
 
 namespace RE
@@ -85,6 +86,28 @@ namespace abw
 			return;
 		}
 		global->value = value;
+	}
+
+	// ABW_EnemiesIgnore: 1 = TargetFilter keeps floaters out of enemy target selection.
+	// Missing global means on, the shipped default.
+	// TargetFilter reads it from combat worker threads while the menu thread writes it, so
+	// both sides go through a relaxed atomic_ref (a lone float needs no ordering).
+	inline bool ReadEnemiesIgnore(const RE::TESGlobal* global)
+	{
+		if (!global) {
+			return true;
+		}
+		const float value =
+		    std::atomic_ref<float>(const_cast<float&>(global->value)).load(std::memory_order_relaxed);
+		return !std::isfinite(value) || std::lround(value) != 0;
+	}
+
+	inline void WriteEnemiesIgnore(RE::TESGlobal* global, const bool ignore)
+	{
+		if (!global) {
+			return;
+		}
+		std::atomic_ref<float>(global->value).store(ignore ? 1.0f : 0.0f, std::memory_order_relaxed);
 	}
 
 	// ABW_FloaterCap — shared 1–10 live floater limit. Missing global means 1. The menu

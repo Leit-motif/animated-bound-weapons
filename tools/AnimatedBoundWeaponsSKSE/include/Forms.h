@@ -18,6 +18,7 @@ namespace abw
 		RE::TESGlobal*   damageScale{ nullptr };
 		RE::TESGlobal*   hideQuiver{ nullptr };
 		RE::TESGlobal*   floaterCap{ nullptr };
+		RE::TESGlobal*   enemiesIgnore{ nullptr };
 		RE::TESAmmo*     ammoHidden{ nullptr };
 		RE::SpellItem*   summon1H{ nullptr };
 		RE::SpellItem*   summon2H{ nullptr };

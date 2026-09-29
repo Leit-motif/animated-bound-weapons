@@ -56,6 +56,7 @@ namespace abw
 		damageScale = LookupForm<RE::TESGlobal>("ABW_DamageScale");
 		hideQuiver = LookupForm<RE::TESGlobal>("ABW_HideQuiver");
 		floaterCap = LookupForm<RE::TESGlobal>("ABW_FloaterCap");
+		enemiesIgnore = LookupForm<RE::TESGlobal>("ABW_EnemiesIgnore");
 		ammoHidden = LookupForm<RE::TESAmmo>("ABW_Ammo_Hidden");
 		summon1H = LookupForm<RE::SpellItem>("ABW_Summon_1H");
 		summon2H = LookupForm<RE::SpellItem>("ABW_Summon_2H");

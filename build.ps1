@@ -63,6 +63,11 @@ if ($LASTEXITCODE -ne 0) {
     throw "GenerateEsp failed (exit $LASTEXITCODE)"
 }
 
+# Before the tests: SkseRelease120Tests checks the translation file against Strings.inc,
+# so a string change used to fail the first build after it.
+Write-Host "Writing translation file..."
+& (Join-Path $Root "tools\gen-translations.ps1")
+
 Write-Host "Verifying ESP..."
 dotnet test (Join-Path $Root "tools\VerifyEsp.Tests\VerifyEsp.Tests.csproj") -c Release --nologo | Out-Host
 if ($LASTEXITCODE -ne 0) {
@@ -72,9 +77,6 @@ dotnet run --project (Join-Path $Root "tools\VerifyEsp\VerifyEsp.csproj") -c Rel
 if ($LASTEXITCODE -ne 0) {
     throw "VerifyEsp failed (exit $LASTEXITCODE)"
 }
-
-Write-Host "Writing translation file..."
-& (Join-Path $Root "tools\gen-translations.ps1")
 
 Write-Host "Building SKSE plugin..."
 Push-Location $SkseProject

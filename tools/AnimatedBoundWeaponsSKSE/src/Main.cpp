@@ -10,6 +10,7 @@
 #include "PlayerSpells.h"
 #include "PowerGrant.h"
 #include "Strings.h"
+#include "TargetFilter.h"
 
 namespace
 {
@@ -69,6 +70,7 @@ namespace
 			abw::GetForms().Resolve();
 			abw::RegisterActivateSink();
 			abw::RegisterFloaterSetup();
+			abw::InstallTargetFilter();
 			abw::RegisterMenu();
 			abw::SetClfPresent(GetModuleHandleA("SummonActorLimitOverhaul.dll") != nullptr);
 			if (abw::ClfPresent()) {

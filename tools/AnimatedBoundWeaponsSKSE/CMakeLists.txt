@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(AnimatedBoundWeapons VERSION 1.4.0 LANGUAGES CXX)
+project(AnimatedBoundWeapons VERSION 1.5.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -44,6 +44,7 @@ set(SOURCES
     src/Strings.cpp
     src/PluginVmad.cpp
     src/BoundAmmo.cpp
+    src/TargetFilter.cpp
 )
 
 add_commonlibsse_plugin(

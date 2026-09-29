@@ -73,7 +73,7 @@ public sealed class SkseRelocAuditTests
             }
         }
 
-        Assert.Equal(new HashSet<string>(StringComparer.Ordinal) { "37608,38561" }, found);
+        Assert.Equal(new HashSet<string>(StringComparer.Ordinal) { "37608,38561", "45922,47195", "16828,17201" }, found);
     }
 
     [Fact]

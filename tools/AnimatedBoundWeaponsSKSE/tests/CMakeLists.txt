@@ -83,3 +83,8 @@ add_executable(FloaterCapTests FloaterCapTests.cpp)
 target_compile_features(FloaterCapTests PRIVATE cxx_std_23)
 target_include_directories(FloaterCapTests PRIVATE ../include)
 add_test(NAME FloaterCapTests COMMAND FloaterCapTests)
+
+add_executable(TargetFilterTests TargetFilterTests.cpp)
+target_compile_features(TargetFilterTests PRIVATE cxx_std_23)
+target_include_directories(TargetFilterTests PRIVATE ../include)
+add_test(NAME TargetFilterTests COMMAND TargetFilterTests)

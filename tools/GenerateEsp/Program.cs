@@ -426,6 +426,11 @@ AttachClfKeywords(summonMgef2H);
 AttachClfKeywords(summonMgefBow);
 AttachClfKeywords(summonMgefDw);
 
+// Enemy targeting (append-only after the CLF pools). 1 = the SKSE TargetFilter keeps
+// floaters out of enemy combat-target selection; the menu checkbox writes it.
+var enemiesIgnore = new GlobalFloat(mod) { EditorID = "ABW_EnemiesIgnore", Data = 1.0f };
+mod.Globals.Add(enemiesIgnore);
+
 Directory.CreateDirectory(modFolder);
 Directory.CreateDirectory(docsDir);
 mod.WriteToBinary(espPath);
@@ -461,6 +466,7 @@ var lines = new List<string>
     $"MagicSpecialConjuration: 0x{kwSpecial.FormKey.ID:X}  (optional CLF)",
     $"MagicSummonABW1BaseOne..MagicSummonABW{kwAbwPools.Length}BaseOne: " +
         string.Join(", ", kwAbwPools.Select(k => $"0x{k.FormKey.ID:X}")),
+    $"ABW_EnemiesIgnore: 0x{enemiesIgnore.FormKey.ID:X}  (default 1; TargetFilter keeps floaters out of enemy target selection)",
 };
 File.WriteAllLines(formIdsPath, lines);
 

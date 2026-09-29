@@ -267,6 +267,14 @@ namespace abw
 				    "DualCastWield set to {}", dualCastWield ? "on" : "off");
 			}
 
+			bool enemiesIgnore = ReadEnemiesIgnore(forms.enemiesIgnore);
+			if (ImGuiMCP::Checkbox(T(Str::EnemiesIgnore), &enemiesIgnore)) {
+				// TargetFilter reads the global on every candidate lookup. An enemy already
+				// on a floater when this turns on keeps it until its next reselection.
+				WriteEnemiesIgnore(forms.enemiesIgnore, enemiesIgnore);
+				SKSE::log::info("EnemiesIgnore set to {}", enemiesIgnore ? "on" : "off");
+			}
+
 			if (gPickerModeUi != 2) {
 				if (ImGuiMCP::Button(T(Str::RefreshSpells))) {
 					if (auto* player = RE::PlayerCharacter::GetSingleton()) {
