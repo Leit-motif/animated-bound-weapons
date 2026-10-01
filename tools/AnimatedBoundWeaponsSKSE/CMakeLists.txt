@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(AnimatedBoundWeapons VERSION 1.5.0 LANGUAGES CXX)
+project(AnimatedBoundWeapons VERSION 1.5.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -45,6 +45,7 @@ set(SOURCES
     src/PluginVmad.cpp
     src/BoundAmmo.cpp
     src/TargetFilter.cpp
+    src/InstructionLength.cpp
 )
 
 add_commonlibsse_plugin(
@@ -54,6 +55,16 @@ add_commonlibsse_plugin(
 )
 
 target_precompile_headers(${PROJECT_NAME} PRIVATE include/PCH.h)
+
+# TargetFilter decodes instruction boundaries with the hde64 that CommonLibSSE-NG vendors
+# (SKSE_SUPPORT_PATCH_SAFETY) and links; only the header path is needed here.
+FetchContent_GetProperties(hde64 SOURCE_DIR ABW_HDE64_SOURCE_DIR)
+if(NOT ABW_HDE64_SOURCE_DIR)
+    message(FATAL_ERROR "hde64 not populated: CommonLibSSE-NG SKSE_SUPPORT_PATCH_SAFETY must stay ON")
+endif()
+set_source_files_properties(src/InstructionLength.cpp PROPERTIES
+    SKIP_PRECOMPILE_HEADERS ON
+    INCLUDE_DIRECTORIES "${ABW_HDE64_SOURCE_DIR}/src/hde")
 target_include_directories(${PROJECT_NAME} PRIVATE include extern)
 target_compile_definitions(${PROJECT_NAME} PRIVATE MOD_NAME="Animated Bound Weapons")
 

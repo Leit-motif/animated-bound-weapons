@@ -73,7 +73,9 @@ public sealed class SkseRelocAuditTests
             }
         }
 
-        Assert.Equal(new HashSet<string>(StringComparer.Ordinal) { "37608,38561", "45922,47195", "16828,17201" }, found);
+        // The target selector routine (was 45922/47195) is now reached through its vtable's
+        // slot 6; ids for it moved between AE builds (.scratch/abw-ae-target-filter/spec.md).
+        Assert.Equal(new HashSet<string>(StringComparer.Ordinal) { "37608,38561", "16828,17201" }, found);
     }
 
     [Fact]
@@ -94,8 +96,9 @@ public sealed class SkseRelocAuditTests
 
         // BoundItemEffect::Start and SummonCreatureEffect::Start are absent; the latter
         // was removed after live tracing showed registration occurs after Start returns.
+        // 0x6 is CombatTargetSelectorStandard::SelectTarget (TargetFilter.cpp).
         Assert.Equal(
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "0x15", "0xA6" },
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "0x15", "0xA6", "0x6" },
             found);
     }
 

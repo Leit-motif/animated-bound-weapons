@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(ABWStorageTests LANGUAGES CXX)
+project(ABWStorageTests LANGUAGES C CXX)
 enable_testing()
 add_executable(StorageTests StorageTests.cpp ../src/FormListStorage.cpp)
 target_compile_features(StorageTests PRIVATE cxx_std_23)
@@ -84,7 +84,17 @@ target_compile_features(FloaterCapTests PRIVATE cxx_std_23)
 target_include_directories(FloaterCapTests PRIVATE ../include)
 add_test(NAME FloaterCapTests COMMAND FloaterCapTests)
 
-add_executable(TargetFilterTests TargetFilterTests.cpp)
-target_compile_features(TargetFilterTests PRIVATE cxx_std_23)
-target_include_directories(TargetFilterTests PRIVATE ../include)
-add_test(NAME TargetFilterTests COMMAND TargetFilterTests)
+# The planner and the plugin's decoder (src/InstructionLength.cpp) over the hde64 that
+# CommonLibSSE-NG vendors, which the plugin build fetches: configure the plugin build first.
+# The real AE 1.7.104 case runs only when that executable is present; the ABW_AE_EXE
+# environment variable points it elsewhere at run time.
+set(ABW_HDE64_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../build/release/_deps/hde64-src/src/hde" CACHE PATH "hde64 sources (plugin build _deps)")
+if(EXISTS "${ABW_HDE64_DIR}/hde64.c")
+    add_executable(TargetFilterTests TargetFilterTests.cpp ../src/InstructionLength.cpp "${ABW_HDE64_DIR}/hde64.c")
+    set_source_files_properties("${ABW_HDE64_DIR}/hde64.c" PROPERTIES LANGUAGE C)
+    target_compile_features(TargetFilterTests PRIVATE cxx_std_23)
+    target_include_directories(TargetFilterTests PRIVATE ../include "${ABW_HDE64_DIR}")
+    add_test(NAME TargetFilterTests COMMAND TargetFilterTests)
+else()
+    message(WARNING "hde64 not found at ${ABW_HDE64_DIR}; TargetFilterTests skipped until the plugin build is configured")
+endif()

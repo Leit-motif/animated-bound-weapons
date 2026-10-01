@@ -13,6 +13,7 @@
 #include "PowerGrant.h"
 #include "SpellFilters.h"
 #include "Strings.h"
+#include "TargetFilter.h"
 
 #include <atomic>
 
@@ -273,6 +274,11 @@ namespace abw
 				// on a floater when this turns on keeps it until its next reselection.
 				WriteEnemiesIgnore(forms.enemiesIgnore, enemiesIgnore);
 				SKSE::log::info("EnemiesIgnore set to {}", enemiesIgnore ? "on" : "off");
+			}
+			if (!TargetFilterInstalled()) {
+				// The installer refused on this runtime (its log line says why); the checkbox
+				// still writes the global, but nothing reads it.
+				ImGuiMCP::TextWrapped("%s", T(Str::EnemiesIgnoreInactive));
 			}
 
 			if (gPickerModeUi != 2) {

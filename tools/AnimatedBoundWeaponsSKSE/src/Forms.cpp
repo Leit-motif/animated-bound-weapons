@@ -1,6 +1,7 @@
 #include "PCH.h"
 
 #include "BoundFacts.h"
+#include "FormIds.h"
 #include "Forms.h"
 #include "SpellFilters.h"
 
@@ -8,12 +9,18 @@ namespace abw
 {
 	namespace
 	{
+		// By local FormID in ABW's own plugin, which needs no editor IDs; by editor ID only when
+		// the plugin is not loaded under its shipped name (a merge or rename with Tweaks present).
 		template<class T>
-		T* LookupForm(std::string_view editorId)
+		T* LookupForm(std::uint32_t localId, std::string_view editorId)
 		{
-			auto* form = RE::TESForm::LookupByEditorID<T>(editorId);
+			auto* dataHandler = RE::TESDataHandler::GetSingleton();
+			T* form = dataHandler ? dataHandler->LookupForm<T>(localId, form_ids::kPlugin) : nullptr;
 			if (!form) {
-				SKSE::log::warn("Missing form EDID {}", editorId);
+				form = RE::TESForm::LookupByEditorID<T>(editorId);
+			}
+			if (!form) {
+				SKSE::log::warn("Missing form {} (0x{:03X} in {})", editorId, localId, form_ids::kPlugin);
 			}
 			return form;
 		}
@@ -44,26 +51,26 @@ namespace abw
 
 	bool Forms::Resolve()
 	{
-		assignedSpells = LookupForm<RE::BGSListForm>("ABW_AssignedSpells");
-		assignedLeftSpells = LookupForm<RE::BGSListForm>("ABW_AssignedLeftSpells");
-		leftNone = LookupForm<RE::SpellItem>("ABW_LeftNone");
-		abwPower = LookupForm<RE::SpellItem>("ABW_Power");
-		pickerMode = LookupForm<RE::TESGlobal>("ABW_PickerMode");
-		powerOptOut = LookupForm<RE::TESGlobal>("ABW_PowerOptOut");
-		onCastArmed = LookupForm<RE::TESGlobal>("ABW_OnCastArmed");
-		dualCastWield = LookupForm<RE::TESGlobal>("ABW_DualCastWield");
-		durationScale = LookupForm<RE::TESGlobal>("ABW_DurationScale");
-		damageScale = LookupForm<RE::TESGlobal>("ABW_DamageScale");
-		hideQuiver = LookupForm<RE::TESGlobal>("ABW_HideQuiver");
-		floaterCap = LookupForm<RE::TESGlobal>("ABW_FloaterCap");
-		enemiesIgnore = LookupForm<RE::TESGlobal>("ABW_EnemiesIgnore");
-		ammoHidden = LookupForm<RE::TESAmmo>("ABW_Ammo_Hidden");
-		summon1H = LookupForm<RE::SpellItem>("ABW_Summon_1H");
-		summon2H = LookupForm<RE::SpellItem>("ABW_Summon_2H");
-		summonBow = LookupForm<RE::SpellItem>("ABW_Summon_Bow");
-		summonDW = LookupForm<RE::SpellItem>("ABW_Summon_DW");
-		boundPerkList = LookupForm<RE::BGSListForm>("ABW_BoundPerkList");
-		silentFeet = LookupForm<RE::TESObjectARMO>("ABW_SilentFeet");
+		assignedSpells = LookupForm<RE::BGSListForm>(form_ids::kAssignedSpells, "ABW_AssignedSpells");
+		assignedLeftSpells = LookupForm<RE::BGSListForm>(form_ids::kAssignedLeftSpells, "ABW_AssignedLeftSpells");
+		leftNone = LookupForm<RE::SpellItem>(form_ids::kLeftNone, "ABW_LeftNone");
+		abwPower = LookupForm<RE::SpellItem>(form_ids::kPower, "ABW_Power");
+		pickerMode = LookupForm<RE::TESGlobal>(form_ids::kPickerMode, "ABW_PickerMode");
+		powerOptOut = LookupForm<RE::TESGlobal>(form_ids::kPowerOptOut, "ABW_PowerOptOut");
+		onCastArmed = LookupForm<RE::TESGlobal>(form_ids::kOnCastArmed, "ABW_OnCastArmed");
+		dualCastWield = LookupForm<RE::TESGlobal>(form_ids::kDualCastWield, "ABW_DualCastWield");
+		durationScale = LookupForm<RE::TESGlobal>(form_ids::kDurationScale, "ABW_DurationScale");
+		damageScale = LookupForm<RE::TESGlobal>(form_ids::kDamageScale, "ABW_DamageScale");
+		hideQuiver = LookupForm<RE::TESGlobal>(form_ids::kHideQuiver, "ABW_HideQuiver");
+		floaterCap = LookupForm<RE::TESGlobal>(form_ids::kFloaterCap, "ABW_FloaterCap");
+		enemiesIgnore = LookupForm<RE::TESGlobal>(form_ids::kEnemiesIgnore, "ABW_EnemiesIgnore");
+		ammoHidden = LookupForm<RE::TESAmmo>(form_ids::kAmmoHidden, "ABW_Ammo_Hidden");
+		summon1H = LookupForm<RE::SpellItem>(form_ids::kSummon1H, "ABW_Summon_1H");
+		summon2H = LookupForm<RE::SpellItem>(form_ids::kSummon2H, "ABW_Summon_2H");
+		summonBow = LookupForm<RE::SpellItem>(form_ids::kSummonBow, "ABW_Summon_Bow");
+		summonDW = LookupForm<RE::SpellItem>(form_ids::kSummonDW, "ABW_Summon_DW");
+		boundPerkList = LookupForm<RE::BGSListForm>(form_ids::kBoundPerkList, "ABW_BoundPerkList");
+		silentFeet = LookupForm<RE::TESObjectARMO>(form_ids::kSilentFeet, "ABW_SilentFeet");
 
 		floaterBase1H = SummonedBase(summon1H);
 		floaterBase2H = SummonedBase(summon2H);

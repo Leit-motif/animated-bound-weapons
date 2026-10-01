@@ -39,7 +39,7 @@ public sealed class EnemiesIgnoreTests
     }
 
     [Fact]
-    public void Target_filter_drops_floaters_from_both_lookups_and_reads_the_global()
+    public void Target_filter_drops_floaters_while_a_non_floater_selects_and_reads_the_global()
     {
         var filter = Skse("src", "TargetFilter.cpp");
         var ignored = filter.Substring(filter.IndexOf("bool IsIgnoredTarget(", StringComparison.Ordinal), 300);
@@ -51,9 +51,26 @@ public sealed class EnemiesIgnoreTests
         Assert.Contains("out.reset();", thunk, StringComparison.Ordinal);
         Assert.DoesNotContain("SKSE::log::info", thunk, StringComparison.Ordinal);
 
-        // Both lookups (detected pass and fallback search pass) or nothing.
-        Assert.Contains("kExpectedSites = 2", filter, StringComparison.Ordinal);
-        Assert.Contains("if (sites.size() != kExpectedSites)", filter, StringComparison.Ordinal);
+        // Filters only while a non-floater selects: a floater's own selection resolves the
+        // floater itself first and dereferences it (.scratch/abw-ae-target-filter/spec.md).
+        Assert.Contains("if (tFilterCandidates && out && IsIgnoredTarget(out.get()))", thunk, StringComparison.Ordinal);
+        var selectAt = filter.IndexOf("struct SelectTarget", StringComparison.Ordinal);
+        Assert.True(selectAt >= 0, "slot 6 hook must exist");
+        var select = filter.Substring(selectAt, Math.Min(1200, filter.Length - selectAt));
+        Assert.Contains("!GetForms().IsFloaterBase(selecting->GetActorBase())", select, StringComparison.Ordinal);
+        Assert.Contains("tFilterCandidates = outer;", select, StringComparison.Ordinal);
+
+        // The planner's structure or nothing: a refusal patches no site and no vtable slot, and
+        // slot 6 is hooked only on CombatTargetSelectorStandard's vtable, checked through RTTI.
+        var install = filter.Substring(filter.IndexOf("void InstallTargetFilter()", StringComparison.Ordinal));
+        var rtti = install.IndexOf("if (!IsSelectorVtable(", StringComparison.Ordinal);
+        var refuse = install.IndexOf("if (!plan.refusal.empty())", StringComparison.Ordinal);
+        var hookSlot = install.IndexOf("vtable.write_vfunc(0x6", StringComparison.Ordinal);
+        Assert.True(rtti >= 0 && refuse >= 0 && hookSlot >= 0, "installer must check RTTI, check the plan, and hook slot 6");
+        Assert.Contains("REL::Relocation<std::uintptr_t> vtable{ RE::VTABLE_CombatTargetSelectorStandard[0] };", install, StringComparison.Ordinal);
+        Assert.True(rtti < refuse && refuse < install.IndexOf("write_call<5>", StringComparison.Ordinal), "checks come before any site is patched");
+        Assert.True(refuse < hookSlot, "refusal checked before slot 6 is hooked");
+        Assert.Contains("for (const auto site : plan.sites)", install, StringComparison.Ordinal);
         Assert.Contains("abw::InstallTargetFilter();", Skse("src", "Main.cpp"), StringComparison.Ordinal);
 
         // Ticket 02 replaces ticket 01's mechanism.
@@ -73,5 +90,15 @@ public sealed class EnemiesIgnoreTests
         var balance = Skse("include", "Balance.h");
         var read = balance.Substring(balance.IndexOf("inline bool ReadEnemiesIgnore", StringComparison.Ordinal), 250);
         Assert.Contains("return true;", read, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Menu_says_when_the_filter_is_not_installed()
+    {
+        var menu = Skse("src", "Menu.cpp");
+        var notice = menu.IndexOf("T(Str::EnemiesIgnoreInactive)", StringComparison.Ordinal);
+        Assert.True(notice >= 0, "menu must say when enemy-ignore has no effect");
+        Assert.Contains("if (!TargetFilterInstalled())", menu.Substring(notice - 250, 250), StringComparison.Ordinal);
+        Assert.True(notice > menu.IndexOf("T(Str::EnemiesIgnore)", StringComparison.Ordinal), "notice sits under the checkbox");
     }
 }
